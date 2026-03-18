@@ -73,3 +73,22 @@ Design, limitations & next steps
 If you want screenshots, a developer deep-dive, or one of the recommended improvements implemented next, tell me which and I'll proceed.
 
 License: MIT (personal project)
+
+Troubleshooting
+---------------
+
+- Blocked pages still show the extension id or fail to load: some navigation flows (browser error pages or special frames) prevent `chrome-extension://` redirects. The extension opens the blocked page in a new tab as a fallback — if you still see issues, try disabling other extensions or test in an incognito profile.
+- DNR rule count errors: if you see a rule-count warning in Options, reduce the blocklist or remove duplicates. The active-rule computation is based on `blocked` + `locks`. The rule limit is enforced in `src/background.js` (`RULE_LIMIT` constant).
+- Locks not applying: ensure the extension is enabled and that `declarativeNetRequest` permission is present in `manifest.json`.
+
+Development
+-----------
+
+- Tests: run `npm test` (Jest) — tests target pure logic in `src/testlib.js`.
+- CI: a GitHub Actions workflow runs tests on push/PR to `main` (`.github/workflows/nodejs.yml`).
+- Load unpacked: follow the Quick start section to load the extension into Brave for manual testing.
+
+Contributing & License
+----------------------
+
+See `CONTRIBUTING.md` for contribution guidance. This project is released under the MIT License (`LICENSE`).
