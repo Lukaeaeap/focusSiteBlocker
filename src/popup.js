@@ -28,6 +28,22 @@ async function getActiveHost() {
     });
 }
 
+function redirectActiveTabToBlockedIfMatches(host) {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        const tab = tabs && tabs[0];
+        if (!tab || !tab.id) return;
+        const url = tab.url || tab.pendingUrl || '';
+        if (!url) return;
+        if (normalizeHost(url) !== host) return;
+        const blockedUrl = chrome.runtime.getURL('src/blocked.html') + '?url=' + encodeURIComponent(url);
+        try {
+            chrome.tabs.update(tab.id, { url: blockedUrl });
+        } catch (e) {
+            // ignore redirect errors in popup context
+        }
+    });
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
     const hostEl = document.getElementById('host');
     const blockBtn = document.getElementById('blockBtn');
@@ -125,6 +141,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 list.push(host);
                 chrome.storage.local.set({ blocked: list }, () => {
                     showMsg('Blocked ' + host);
+                    redirectActiveTabToBlockedIfMatches(host);
                     updateState();
                 });
             } else {
