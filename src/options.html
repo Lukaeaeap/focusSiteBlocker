@@ -247,6 +247,24 @@
             color: var(--accent-strong);
         }
 
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 700;
+            border: 1px solid var(--border);
+            color: var(--muted);
+            background: #fff;
+        }
+
+        .pill.on {
+            background: #e5f4ee;
+            border-color: #8fc4af;
+            color: #145843;
+        }
+
         .days {
             display: flex;
             gap: 8px;
@@ -345,7 +363,11 @@
 
             <div id="tab-sessions" class="tab-panel" role="tabpanel">
                 <h2>Sessions</h2>
-                <p class="subtle">Session Presets: save host bundles and apply in one click.</p>
+                <p class="subtle">Session presets are toggleable. Apply turns a preset on, Unapply turns it off.</p>
+                <div class="panel" style="margin-bottom:10px">
+                    <p class="subtle" id="activeSessionsSummary">Active sessions: none</p>
+                    <ul id="activeSessionsList"></ul>
+                </div>
                 <div class="panel">
                     <div class="row">
                         <input id="presetName" type="text" placeholder="Deep Work" />

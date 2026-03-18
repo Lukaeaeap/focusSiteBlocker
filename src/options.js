@@ -8,6 +8,7 @@ let currentSchedules = [];
 let currentBudgets = {};
 let currentBudgetUsage = { day: '', usage: {} };
 let currentPresets = [];
+let currentAppliedPresetIds = [];
 let currentInsightsSettings = { enabled: true };
 let currentInsights = { days: {} };
 let currentInsightsMeta = { lastUpdated: 0 };
@@ -85,11 +86,16 @@ function save(patch, cb) {
 
 function removeHostEverywhere(host, onDone) {
     chrome.runtime.sendMessage({ action: 'removeHostEverywhere', host }, (res) => {
-        if (res && res.success) {
-            if (onDone) onDone(true);
+        const msgErr = chrome.runtime.lastError;
+        if (msgErr) {
+            if (onDone) onDone(false, msgErr.message || 'message failed');
             return;
         }
-        if (onDone) onDone(false);
+        if (res && res.success) {
+            if (onDone) onDone(true, '');
+            return;
+        }
+        if (onDone) onDone(false, (res && res.error) ? String(res.error) : 'unknown error');
     });
 }
 
@@ -101,6 +107,14 @@ function renderRuleStatus(list, locks, err) {
     const now = Date.now();
 
     const active = new Set((list || []).map((h) => normalizeHost(h)).filter(Boolean));
+    const appliedIds = new Set((currentAppliedPresetIds || []).map((id) => String(id)));
+    (currentPresets || []).forEach((preset) => {
+        if (!preset || !appliedIds.has(String(preset.id))) return;
+        (preset.hosts || []).forEach((h) => {
+            const nh = normalizeHost(h);
+            if (nh) active.add(nh);
+        });
+    });
     Object.entries(locks || {}).forEach(([h, until]) => {
         if (until && now < until) active.add(h);
     });
@@ -193,9 +207,14 @@ function renderBlockedList(list) {
             if (confirmText.trim().toLowerCase() !== host.toLowerCase()) {
                 return alert('Confirmation did not match. Removal cancelled.');
             }
-            removeHostEverywhere(nhost, (ok) => {
+            removeHostEverywhere(nhost, (ok, error) => {
                 if (!ok) {
-                    alert('Failed to remove this site from all rules');
+                    // Fallback path: at least remove from manual blocklist to avoid hard lockout.
+                    const next = currentList.filter((h) => normalizeHost(h) !== nhost);
+                    save({ blocked: next }, () => {
+                        loadAndRender();
+                        alert(`Removed from blocklist, but full cleanup failed: ${error || 'unknown error'}`);
+                    });
                     return;
                 }
                 loadAndRender();
@@ -315,8 +334,35 @@ function renderBudgets() {
 
 function renderPresets() {
     const ul = document.getElementById('presetsList');
+    const activeUl = document.getElementById('activeSessionsList');
+    const activeSummary = document.getElementById('activeSessionsSummary');
     if (!ul) return;
     ul.innerHTML = '';
+    if (activeUl) activeUl.innerHTML = '';
+
+    const appliedIds = new Set((currentAppliedPresetIds || []).map((id) => String(id)));
+    const activePresets = (currentPresets || []).filter((preset) => appliedIds.has(String(preset.id)));
+
+    if (activeSummary) {
+        activeSummary.textContent = activePresets.length
+            ? `Active sessions: ${activePresets.length}`
+            : 'Active sessions: none';
+    }
+
+    if (activeUl) {
+        if (!activePresets.length) {
+            const li = document.createElement('li');
+            li.textContent = 'No active sessions right now';
+            activeUl.appendChild(li);
+        } else {
+            activePresets.forEach((preset) => {
+                const li = document.createElement('li');
+                li.innerHTML = `<strong>${preset.name}</strong><div>${preset.hosts.join(', ') || '(no hosts)'}</div>`;
+                activeUl.appendChild(li);
+            });
+        }
+    }
+
     if (!currentPresets.length) {
         const li = document.createElement('li');
         li.textContent = 'No presets yet';
@@ -325,18 +371,21 @@ function renderPresets() {
     }
 
     currentPresets.forEach((preset) => {
+        const isApplied = appliedIds.has(String(preset.id));
         const li = document.createElement('li');
         const left = document.createElement('div');
-        left.innerHTML = `<strong>${preset.name}</strong><div>${preset.hosts.join(', ') || '(no hosts)'}</div>`;
+        left.innerHTML = `<strong>${preset.name}</strong> <span class="pill ${isApplied ? 'on' : ''}">${isApplied ? 'Applied' : 'Not Applied'}</span><div>${preset.hosts.join(', ') || '(no hosts)'}</div>`;
 
         const controls = document.createElement('div');
         controls.className = 'controls';
 
         const applyBtn = document.createElement('button');
-        applyBtn.textContent = 'Apply';
+        applyBtn.textContent = isApplied ? 'Unapply' : 'Apply';
         applyBtn.addEventListener('click', () => {
-            const merged = new Set(currentList.concat(preset.hosts).map((h) => normalizeHost(h)).filter(Boolean));
-            save({ blocked: Array.from(merged) }, loadAndRender);
+            const nextApplied = new Set((currentAppliedPresetIds || []).map((id) => String(id)));
+            if (isApplied) nextApplied.delete(String(preset.id));
+            else nextApplied.add(String(preset.id));
+            save({ appliedPresetIds: Array.from(nextApplied) }, loadAndRender);
         });
 
         const delBtn = document.createElement('button');
@@ -344,7 +393,8 @@ function renderPresets() {
         delBtn.textContent = 'Delete';
         delBtn.addEventListener('click', () => {
             const next = currentPresets.filter((x) => x.id !== preset.id);
-            save({ presets: next }, loadAndRender);
+            const nextApplied = (currentAppliedPresetIds || []).filter((id) => String(id) !== String(preset.id));
+            save({ presets: next, appliedPresetIds: nextApplied }, loadAndRender);
         });
 
         controls.appendChild(applyBtn);
@@ -420,6 +470,7 @@ function loadAndRender() {
         timeBudgets: {},
         budgetUsage: { day: '', usage: {} },
         presets: [],
+        appliedPresetIds: [],
         insightsSettings: { enabled: true },
         insights: { days: {} },
         insightsMeta: { lastUpdated: 0 },
@@ -431,6 +482,7 @@ function loadAndRender() {
         currentBudgets = Object.assign({}, res.timeBudgets || {});
         currentBudgetUsage = res.budgetUsage || { day: '', usage: {} };
         currentPresets = (res.presets || []).map(normalizePreset);
+        currentAppliedPresetIds = Array.isArray(res.appliedPresetIds) ? res.appliedPresetIds.map((id) => String(id)) : [];
         currentInsightsSettings = res.insightsSettings || { enabled: true };
         currentInsights = res.insights || { days: {} };
         currentInsightsMeta = res.insightsMeta || { lastUpdated: 0 };
@@ -502,6 +554,7 @@ document.addEventListener('DOMContentLoaded', () => {
             timeBudgets: currentBudgets,
             budgetUsage: currentBudgetUsage,
             presets: currentPresets,
+            appliedPresetIds: currentAppliedPresetIds,
             insightsSettings: currentInsightsSettings,
             insights: currentInsights,
             blockedExperience: currentBlockedExperience
@@ -531,6 +584,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const fileSchedules = Array.isArray(json.schedules) ? json.schedules.map(normalizeSchedule) : [];
                 const fileBudgets = json.timeBudgets && typeof json.timeBudgets === 'object' ? json.timeBudgets : {};
                 const filePresets = Array.isArray(json.presets) ? json.presets.map(normalizePreset) : [];
+                const fileAppliedPresetIds = Array.isArray(json.appliedPresetIds) ? json.appliedPresetIds.map((id) => String(id)) : [];
                 const fileInsightsSettings = json.insightsSettings && typeof json.insightsSettings === 'object' ? json.insightsSettings : null;
                 const fileInsights = json.insights && typeof json.insights === 'object' ? json.insights : null;
                 const fileBlockedExperience = json.blockedExperience && typeof json.blockedExperience === 'object' ? json.blockedExperience : null;
@@ -546,13 +600,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 const presetsById = new Map();
                 currentPresets.forEach((p) => presetsById.set(p.id, p));
                 filePresets.forEach((p) => presetsById.set(p.id, p));
+                const mergedPresetIds = Array.from(presetsById.keys()).map((id) => String(id));
+                const mergedAppliedPresetIds = Array.from(new Set((currentAppliedPresetIds || []).concat(fileAppliedPresetIds).map((id) => String(id))))
+                    .filter((id) => mergedPresetIds.includes(id));
 
                 const patch = {
                     blocked: mergedBlocked,
                     locks: mergedLocks,
                     schedules: Array.from(schedulesById.values()),
                     timeBudgets: mergedBudgets,
-                    presets: Array.from(presetsById.values())
+                    presets: Array.from(presetsById.values()),
+                    appliedPresetIds: mergedAppliedPresetIds
                 };
                 if (fileInsightsSettings) patch.insightsSettings = fileInsightsSettings;
                 if (fileInsights) patch.insights = fileInsights;
@@ -613,7 +671,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const name = (presetName.value || '').trim() || 'Preset';
         const hosts = parseHostsCsv(presetHosts.value);
         if (!hosts.length) return alert('Add at least one host to save a preset');
-        const next = currentPresets.concat([normalizePreset({ id: uid('preset'), name, hosts })]);
+        const newPreset = normalizePreset({ id: uid('preset'), name, hosts });
+        const next = currentPresets.concat([newPreset]);
         save({ presets: next }, () => {
             presetName.value = '';
             presetHosts.value = '';
@@ -644,7 +703,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (densitySelect) densitySelect.addEventListener('change', saveAppearance);
 
     chrome.storage.onChanged.addListener((changes, area) => {
-        if (area === 'local' && (changes.blocked || changes.locks || changes.ruleError || changes.schedules || changes.timeBudgets || changes.budgetUsage || changes.presets || changes.insights || changes.insightsMeta || changes.insightsSettings || changes.blockedExperience)) {
+        if (area === 'local' && (changes.blocked || changes.locks || changes.ruleError || changes.schedules || changes.timeBudgets || changes.budgetUsage || changes.presets || changes.appliedPresetIds || changes.insights || changes.insightsMeta || changes.insightsSettings || changes.blockedExperience)) {
             loadAndRender();
         }
     });

@@ -36,6 +36,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const unlockBtn = document.getElementById('unlockBtn');
     const optionsBtn = document.getElementById('optionsBtn');
     const statusEl = document.getElementById('status');
+    const sessionInfoEl = document.getElementById('sessionInfo');
     const budgetInfoEl = document.getElementById('budgetInfo');
 
     const host = await getActiveHost();
@@ -50,17 +51,27 @@ document.addEventListener('DOMContentLoaded', async () => {
     hostEl.textContent = host;
 
     function updateState() {
-        chrome.storage.local.get({ blocked: [], locks: {}, timeBudgets: {}, budgetUsage: { day: '', usage: {} } }, (res) => {
+        chrome.storage.local.get({ blocked: [], locks: {}, timeBudgets: {}, budgetUsage: { day: '', usage: {} }, presets: [], appliedPresetIds: [] }, (res) => {
             const blocked = res.blocked || [];
             const locks = res.locks || {};
             const budgets = res.timeBudgets || {};
             const budgetUsage = res.budgetUsage || { day: '', usage: {} };
-            const isBlocked = blocked.includes(host);
+            const presets = Array.isArray(res.presets) ? res.presets : [];
+            const appliedIds = new Set((Array.isArray(res.appliedPresetIds) ? res.appliedPresetIds : []).map((id) => String(id)));
+
+            const activeSessionsForHost = presets
+                .filter((preset) => appliedIds.has(String(preset && preset.id ? preset.id : '')))
+                .filter((preset) => Array.isArray(preset && preset.hosts) && preset.hosts.map((h) => normalizeHost(h)).includes(host))
+                .map((preset) => (preset && preset.name ? String(preset.name).trim() : 'Session'));
+
+            const manualBlocked = blocked.includes(host);
+            const sessionBlocked = activeSessionsForHost.length > 0;
+            const isBlocked = manualBlocked || sessionBlocked;
             const until = locks[host];
             const now = Date.now();
             const isLocked = !!(until && now < until);
 
-            blockBtn.disabled = isBlocked;
+            blockBtn.disabled = manualBlocked;
             unblockBtn.disabled = !isBlocked;
             lockBtn.disabled = isLocked;
             unlockBtn.disabled = !isLocked;
@@ -71,11 +82,21 @@ document.addEventListener('DOMContentLoaded', async () => {
                 statusEl.textContent = `Locked - ${compact} remaining`;
                 lockBtn.textContent = `Locked (${compact})`;
             } else if (isBlocked) {
-                statusEl.textContent = 'This site is in your blocklist';
+                statusEl.textContent = manualBlocked
+                    ? 'This site is in your blocklist'
+                    : 'This site is blocked by an active session';
                 lockBtn.textContent = 'Lock 5m';
             } else {
                 statusEl.textContent = '';
                 lockBtn.textContent = 'Lock 5m';
+            }
+
+            if (sessionInfoEl) {
+                if (activeSessionsForHost.length) {
+                    sessionInfoEl.textContent = `Sessions active here: ${activeSessionsForHost.join(', ')}`;
+                } else {
+                    sessionInfoEl.textContent = 'Sessions active here: none';
+                }
             }
 
             if (budgetInfoEl) {

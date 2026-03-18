@@ -5,6 +5,8 @@ let locks = {}; // { host: lockedUntilTimestamp }
 let schedules = []; // [{ id, name, hosts[], days[], start, end, enabled }]
 let timeBudgets = {}; // { host: minutesPerDay }
 let budgetUsage = { day: '', usage: {} }; // { day: YYYY-MM-DD, usage: { host: usedMinutes } }
+let presets = []; // [{ id, name, hosts[] }]
+let appliedPresetIds = []; // [presetId]
 let insightsSettings = { enabled: true };
 let insights = { days: {} }; // { days: { YYYY-MM-DD: { blockedAttempts, focusMinutes } } }
 let insightsMeta = { lastUpdated: 0 };
@@ -44,6 +46,8 @@ function loadAutomationState() {
         schedules: [],
         timeBudgets: {},
         budgetUsage: { day: '', usage: {} },
+        presets: [],
+        appliedPresetIds: [],
         insightsSettings: { enabled: true },
         insights: { days: {} },
         insightsMeta: { lastUpdated: 0 }
@@ -51,9 +55,12 @@ function loadAutomationState() {
         schedules = Array.isArray(res.schedules) ? res.schedules : [];
         timeBudgets = normalizeTimeBudgets(res.timeBudgets || {});
         budgetUsage = res.budgetUsage || { day: '', usage: {} };
+        presets = Array.isArray(res.presets) ? res.presets.map(normalizePreset) : [];
+        appliedPresetIds = Array.isArray(res.appliedPresetIds) ? res.appliedPresetIds.map((id) => String(id)) : [];
         insightsSettings = res.insightsSettings || { enabled: true };
         insights = res.insights || { days: {} };
         insightsMeta = res.insightsMeta || { lastUpdated: 0 };
+        updateRules();
     });
 }
 
@@ -74,6 +81,14 @@ chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && changes.timeBudgets) {
         timeBudgets = normalizeTimeBudgets(changes.timeBudgets.newValue || {});
         applySchedulesAndBudgets(Date.now());
+    }
+    if (area === 'local' && changes.presets) {
+        presets = Array.isArray(changes.presets.newValue) ? changes.presets.newValue.map(normalizePreset) : [];
+        updateRules();
+    }
+    if (area === 'local' && changes.appliedPresetIds) {
+        appliedPresetIds = Array.isArray(changes.appliedPresetIds.newValue) ? changes.appliedPresetIds.newValue.map((id) => String(id)) : [];
+        updateRules();
     }
     if (area === 'local' && changes.budgetUsage) {
         budgetUsage = changes.budgetUsage.newValue || { day: '', usage: {} };
@@ -109,6 +124,14 @@ function normalizeSchedule(raw) {
     };
 }
 
+function normalizePreset(raw) {
+    return {
+        id: raw && raw.id ? String(raw.id) : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        name: (raw && raw.name ? String(raw.name) : 'Preset').trim(),
+        hosts: Array.isArray(raw && raw.hosts) ? raw.hosts.map((h) => normalizeHost(h)).filter(Boolean) : []
+    };
+}
+
 function enforceLockedHostsInOpenTabs(now = Date.now()) {
     const lockedHosts = new Set();
     Object.entries(locks || {}).forEach(([h, until]) => {
@@ -121,7 +144,7 @@ function enforceLockedHostsInOpenTabs(now = Date.now()) {
 
     chrome.tabs.query({}, (tabs) => {
         (tabs || []).forEach((tab) => {
-            const url = tab && tab.url ? tab.url : '';
+            const url = tab && (tab.url || tab.pendingUrl) ? (tab.url || tab.pendingUrl) : '';
             if (!url || url.startsWith('chrome-extension://') || url.startsWith('chrome://') || url.startsWith('about:')) return;
             const tabHost = normalizeHost(url);
             if (!tabHost) return;
@@ -130,69 +153,103 @@ function enforceLockedHostsInOpenTabs(now = Date.now()) {
             ));
             if (!covered) return;
             const blockedUrl = chrome.runtime.getURL('src/blocked.html') + '?url=' + encodeURIComponent(url);
-            try { chrome.tabs.update(tab.id, { url: blockedUrl }); } catch (e) { /* ignore */ }
+            try {
+                chrome.tabs.update(tab.id, { url: blockedUrl }, () => {
+                    const err = chrome.runtime.lastError;
+                    if (err) {
+                        console.warn('SiteBlocker: failed to redirect locked tab', { tabId: tab.id, url, error: err.message });
+                    }
+                });
+            } catch (e) { /* ignore */ }
         });
     });
 }
 
 function removeHostFromAllAutomation(host, cb) {
-    const target = normalizeHost(host || '');
-    if (!target) {
-        cb({ success: false, error: 'missing host' });
-        return;
-    }
+    try {
+        const target = normalizeHost(host || '');
+        if (!target) {
+            cb({ success: false, error: 'missing host' });
+            return;
+        }
 
-    chrome.storage.local.get({
-        blocked: [],
-        locks: {},
-        schedules: [],
-        timeBudgets: {},
-        budgetUsage: { day: '', usage: {} },
-        presets: []
-    }, (res) => {
-        const nextBlocked = (res.blocked || []).map((h) => normalizeHost(h)).filter(Boolean).filter((h) => h !== target);
+        chrome.storage.local.get({
+            blocked: [],
+            locks: {},
+            schedules: [],
+            timeBudgets: {},
+            budgetUsage: { day: '', usage: {} },
+            presets: [],
+            appliedPresetIds: []
+        }, (res) => {
+            try {
+                const getErr = chrome.runtime.lastError;
+                if (getErr) {
+                    cb({ success: false, error: getErr.message || 'storage get failed' });
+                    return;
+                }
 
-        const nextLocks = Object.assign({}, res.locks || {});
-        delete nextLocks[target];
+                const nextBlocked = (res.blocked || []).map((h) => normalizeHost(h)).filter(Boolean).filter((h) => h !== target);
 
-        const nextBudgets = Object.assign({}, res.timeBudgets || {});
-        delete nextBudgets[target];
+                const nextLocks = Object.assign({}, res.locks || {});
+                delete nextLocks[target];
 
-        const nextBudgetUsage = Object.assign({ day: '', usage: {} }, res.budgetUsage || {});
-        nextBudgetUsage.usage = Object.assign({}, nextBudgetUsage.usage || {});
-        delete nextBudgetUsage.usage[target];
+                const nextBudgets = Object.assign({}, res.timeBudgets || {});
+                delete nextBudgets[target];
 
-        const nextSchedules = (Array.isArray(res.schedules) ? res.schedules : [])
-            .map((s) => normalizeSchedule(s))
-            .map((s) => Object.assign({}, s, { hosts: (s.hosts || []).filter((h) => h !== target) }))
-            .filter((s) => (s.hosts || []).length > 0);
+                const nextBudgetUsage = Object.assign({ day: '', usage: {} }, res.budgetUsage || {});
+                nextBudgetUsage.usage = Object.assign({}, nextBudgetUsage.usage || {});
+                delete nextBudgetUsage.usage[target];
 
-        const nextPresets = (Array.isArray(res.presets) ? res.presets : [])
-            .map((p) => ({
-                id: p && p.id ? String(p.id) : '',
-                name: p && p.name ? String(p.name) : 'Preset',
-                hosts: Array.isArray(p && p.hosts) ? p.hosts.map((h) => normalizeHost(h)).filter((h) => h && h !== target) : []
-            }))
-            .filter((p) => p.id && p.hosts.length > 0);
+                const nextSchedules = (Array.isArray(res.schedules) ? res.schedules : [])
+                    .map((s) => normalizeSchedule(s))
+                    .map((s) => Object.assign({}, s, { hosts: (s.hosts || []).filter((h) => h !== target) }))
+                    .filter((s) => (s.hosts || []).length > 0);
 
-        blockedHosts = nextBlocked;
-        locks = nextLocks;
-        schedules = nextSchedules;
-        timeBudgets = normalizeTimeBudgets(nextBudgets);
-        budgetUsage = nextBudgetUsage;
+                const nextPresets = (Array.isArray(res.presets) ? res.presets : [])
+                    .map((p) => ({
+                        id: p && p.id ? String(p.id) : '',
+                        name: p && p.name ? String(p.name) : 'Preset',
+                        hosts: Array.isArray(p && p.hosts) ? p.hosts.map((h) => normalizeHost(h)).filter((h) => h && h !== target) : []
+                    }))
+                    .filter((p) => p.id && p.hosts.length > 0);
+                const validPresetIds = new Set(nextPresets.map((p) => p.id));
+                const nextAppliedPresetIds = (Array.isArray(res.appliedPresetIds) ? res.appliedPresetIds : [])
+                    .map((id) => String(id))
+                    .filter((id) => validPresetIds.has(id));
 
-        chrome.storage.local.set({
-            blocked: nextBlocked,
-            locks: nextLocks,
-            schedules: nextSchedules,
-            timeBudgets: nextBudgets,
-            budgetUsage: nextBudgetUsage,
-            presets: nextPresets
-        }, () => {
-            updateRules();
-            cb({ success: true });
+                blockedHosts = nextBlocked;
+                locks = nextLocks;
+                schedules = nextSchedules;
+                timeBudgets = normalizeTimeBudgets(nextBudgets);
+                budgetUsage = nextBudgetUsage;
+                presets = nextPresets;
+                appliedPresetIds = nextAppliedPresetIds;
+
+                chrome.storage.local.set({
+                    blocked: nextBlocked,
+                    locks: nextLocks,
+                    schedules: nextSchedules,
+                    timeBudgets: nextBudgets,
+                    budgetUsage: nextBudgetUsage,
+                    presets: nextPresets,
+                    appliedPresetIds: nextAppliedPresetIds
+                }, () => {
+                    const setErr = chrome.runtime.lastError;
+                    if (setErr) {
+                        cb({ success: false, error: setErr.message || 'storage set failed' });
+                        return;
+                    }
+                    updateRules();
+                    cb({ success: true });
+                });
+            } catch (innerErr) {
+                cb({ success: false, error: innerErr && innerErr.message ? innerErr.message : 'remove failed' });
+            }
         });
-    });
+    } catch (err) {
+        cb({ success: false, error: err && err.message ? err.message : 'remove failed' });
+    }
 }
 
 function cleanExpiredLocksInMemory(now = Date.now()) {
@@ -299,16 +356,24 @@ function applySchedulesAndBudgets(now = Date.now()) {
     if (insightsChanged) chrome.storage.local.set({ insights, insightsMeta });
 }
 
-function refreshActiveTabHost() {
+function refreshActiveTabHost(done) {
     try {
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
             const t = tabs && tabs[0];
             const url = t && t.url ? t.url : '';
             activeTabHost = normalizeHost(url || '');
+            if (typeof done === 'function') done(activeTabHost);
         });
     } catch (e) {
         activeTabHost = '';
+        if (typeof done === 'function') done(activeTabHost);
     }
+}
+
+function runAutomationTick(now = Date.now()) {
+    refreshActiveTabHost(() => {
+        applySchedulesAndBudgets(now);
+    });
 }
 
 function getActiveHosts() {
@@ -319,6 +384,14 @@ function getActiveHosts() {
             return (h || '').toString().trim().toLowerCase();
         } catch (e) { return ''; }
     }).filter(Boolean));
+    const appliedIds = new Set((appliedPresetIds || []).map((id) => String(id)));
+    (presets || []).forEach((preset) => {
+        if (!preset || !appliedIds.has(String(preset.id))) return;
+        (preset.hosts || []).forEach((host) => {
+            const nh = normalizeHost(host);
+            if (nh) hosts.add(nh);
+        });
+    });
     for (const [h, until] of Object.entries(locks || {})) {
         try {
             const nh = (typeof normalizeHost === 'function') ? normalizeHost(h) : (h || '').toString().toLowerCase();
@@ -400,28 +473,24 @@ try {
     chrome.alarms.create('automationTick', { periodInMinutes: 1 });
     chrome.alarms.onAlarm.addListener((alarm) => {
         if (!alarm || alarm.name !== 'automationTick') return;
-        refreshActiveTabHost();
-        applySchedulesAndBudgets(Date.now());
+        runAutomationTick(Date.now());
     });
 } catch (e) {
     console.warn('SiteBlocker: alarms unavailable, falling back to interval tick', e);
     setInterval(() => {
-        refreshActiveTabHost();
-        applySchedulesAndBudgets(Date.now());
+        runAutomationTick(Date.now());
     }, 60 * 1000);
 }
 
 if (chrome.tabs && chrome.tabs.onActivated) {
     chrome.tabs.onActivated.addListener(() => {
-        refreshActiveTabHost();
-        applySchedulesAndBudgets(Date.now());
+        runAutomationTick(Date.now());
     });
 }
 if (chrome.tabs && chrome.tabs.onUpdated) {
     chrome.tabs.onUpdated.addListener((_tabId, changeInfo) => {
         if (changeInfo && changeInfo.status === 'complete') {
-            refreshActiveTabHost();
-            applySchedulesAndBudgets(Date.now());
+            runAutomationTick(Date.now());
         }
     });
 }
@@ -464,7 +533,9 @@ chrome.runtime.onMessage.addListener((msg, sender, cb) => {
         return;
     }
     if (msg.action === 'removeHostEverywhere') {
-        removeHostFromAllAutomation(msg.host, cb);
+        removeHostFromAllAutomation(msg.host, (result) => {
+            cb(result || { success: false, error: 'remove failed' });
+        });
         return true;
     }
     if (msg.action === 'blockedAttempt') {
@@ -484,16 +555,14 @@ chrome.runtime.onInstalled.addListener(() => {
     loadBlockedHosts();
     loadLocks();
     loadAutomationState();
-    refreshActiveTabHost();
-    applySchedulesAndBudgets(Date.now());
+    runAutomationTick(Date.now());
 });
 
 // initial load
 loadBlockedHosts();
 loadLocks();
 loadAutomationState();
-refreshActiveTabHost();
-applySchedulesAndBudgets(Date.now());
+runAutomationTick(Date.now());
 
 // Fallback: when navigation errors occur (for example the browser shows
 // chrome-error://chromewebdata after a blocked navigation), open the blocked
