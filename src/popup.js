@@ -31,57 +31,56 @@ async function getActiveHost() {
 document.addEventListener('DOMContentLoaded', async () => {
     const hostEl = document.getElementById('host');
     const blockBtn = document.getElementById('blockBtn');
-    const lockBtn = document.getElementById('lockBtn');
-    const optionsBtn = document.getElementById('optionsBtn');
     const unblockBtn = document.getElementById('unblockBtn');
+    const lockBtn = document.getElementById('lockBtn');
     const unlockBtn = document.getElementById('unlockBtn');
+    const optionsBtn = document.getElementById('optionsBtn');
     const statusEl = document.getElementById('status');
-    const msgEl = document.getElementById('msg');
 
     const host = await getActiveHost();
     if (!host) {
         hostEl.textContent = 'No site detected';
         blockBtn.disabled = true;
         lockBtn.disabled = true;
+        unblockBtn.disabled = true;
+        unlockBtn.disabled = true;
         return;
     }
     hostEl.textContent = host;
 
-    // update UI state for this host
-    async function updateState() {
-        return new Promise((resolve) => {
-            chrome.storage.local.get({ blocked: [], locks: {} }, (res) => {
-                const blocked = res.blocked || [];
-                const locks = res.locks || {};
-                const isBlocked = blocked.includes(host);
-                const until = locks[host];
-                const now = Date.now();
-                const isLocked = !!(until && now < until);
+    function updateState() {
+        chrome.storage.local.get({ blocked: [], locks: {} }, (res) => {
+            const blocked = res.blocked || [];
+            const locks = res.locks || {};
+            const isBlocked = blocked.includes(host);
+            const until = locks[host];
+            const now = Date.now();
+            const isLocked = !!(until && now < until);
 
-                blockBtn.disabled = isBlocked;
-                unblockBtn.disabled = !isBlocked;
-                lockBtn.disabled = isLocked;
-                unlockBtn.disabled = !isLocked;
+            blockBtn.disabled = isBlocked;
+            unblockBtn.disabled = !isBlocked;
+            lockBtn.disabled = isLocked;
+            unlockBtn.disabled = !isLocked;
 
-                if (isLocked) {
-                    const remain = Math.max(0, Math.ceil((until - now) / 1000));
-                    const m = Math.floor(remain / 60);
-                    const s = remain % 60;
-                    statusEl.textContent = `Locked — ${m}m ${s}s remaining`;
-                    lockBtn.textContent = `Locked (${m}m${s}s)`;
-                } else if (isBlocked) {
-                    statusEl.textContent = 'This site is in your blocklist';
-                    lockBtn.textContent = 'Lock 5m';
-                } else {
-                    statusEl.textContent = '';
-                    lockBtn.textContent = 'Lock 5m';
-                }
-                resolve();
-            });
+            if (isLocked) {
+                const remain = Math.max(0, Math.ceil((until - now) / 1000));
+                const m = Math.floor(remain / 60);
+                const s = remain % 60;
+                statusEl.textContent = `Locked — ${m}m ${s}s remaining`;
+                lockBtn.textContent = `Locked (${m}m${s}s)`;
+            } else if (isBlocked) {
+                statusEl.textContent = 'This site is in your blocklist';
+                lockBtn.textContent = 'Lock 5m';
+            } else {
+                statusEl.textContent = '';
+                lockBtn.textContent = 'Lock 5m';
+            }
         });
     }
 
-    await updateState();
+    updateState();
+    // refresh countdown every second while popup is open
+    const interval = setInterval(updateState, 1000);
 
     blockBtn.addEventListener('click', () => {
         chrome.storage.local.get({ blocked: [] }, (res) => {
@@ -98,12 +97,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     });
 
-    const unblockBtn = document.getElementById('unblockBtn');
     unblockBtn.addEventListener('click', () => {
         chrome.storage.local.get({ blocked: [] }, (res) => {
             const list = res.blocked || [];
             const idx = list.indexOf(host);
-                updateState();
+            if (idx !== -1) {
                 list.splice(idx, 1);
                 chrome.storage.local.set({ blocked: list }, () => {
                     showMsg('Unblocked ' + host);
@@ -119,17 +117,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         chrome.runtime.sendMessage({ action: 'startLock', host, minutes: 5 }, (res) => {
             if (res && res.success) {
                 showMsg('Locked for 5 minutes');
+                updateState();
             } else {
                 showMsg('Failed to lock', 'red');
             }
         });
     });
 
-    const unlockBtn = document.getElementById('unlockBtn');
     unlockBtn.addEventListener('click', () => {
         chrome.runtime.sendMessage({ action: 'stopLock', host }, (res) => {
             if (res && res.success) {
                 showMsg('Lock stopped');
+                updateState();
             } else {
                 showMsg('No active lock', 'orange');
             }
@@ -139,4 +138,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     optionsBtn.addEventListener('click', () => {
         chrome.runtime.openOptionsPage();
     });
+
+    window.addEventListener('unload', () => clearInterval(interval));
 });

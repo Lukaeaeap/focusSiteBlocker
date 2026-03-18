@@ -46,8 +46,7 @@ describe('rule generation', () => {
         expect(r.id).toBe(1);
         expect(r.priority).toBe(1);
         expect(r.action).toHaveProperty('type', 'redirect');
-        expect(r.action.redirect.url).toMatch('/src/blocked.html');
-        expect(r.action.redirect.url).toMatch(encodeURIComponent('https://youtube.com'));
+        expect(r.action.redirect.extensionPath).toBe('/src/blocked.html');
         expect(r.condition.urlFilter).toBe('||youtube.com^');
         expect(r.condition.resourceTypes).toEqual(expect.arrayContaining(['main_frame']));
     });

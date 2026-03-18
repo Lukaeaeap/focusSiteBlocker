@@ -1,5 +1,7 @@
 SiteBlocker — Brave extension (unpacked)
 
+![CI](https://github.com/Lukaeaeap/focusSiteBlocker/actions/workflows/nodejs.yml/badge.svg)
+
 Quick start
 
 1. Open Brave and go to `brave://extensions`.
@@ -42,6 +44,11 @@ npm install
 ```bash
 npm test
 ```
+
+Continuous integration
+
+- A GitHub Actions workflow runs `npm ci` and `npm test` on push and pull requests to `main`.
+- See the CI badge at the top of this README for build status.
 
 Notes:
 

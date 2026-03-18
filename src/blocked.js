@@ -4,10 +4,20 @@ function getQueryParam(name) {
 }
 
 let orig = getQueryParam('url');
-if (!orig && document.referrer) orig = document.referrer;
+// prefer explicit ?url= param; otherwise use document.referrer when it's a normal web origin
+if (!orig && document.referrer) {
+    const ref = document.referrer || '';
+    if (!ref.startsWith('chrome-extension:') && !ref.startsWith('chrome-error:') && !ref.startsWith('about:')) {
+        orig = ref;
+    }
+}
+
+// Display a friendly label when original URL/host cannot be determined
 if (orig) {
     const displayHost = hostnameOf(orig) || orig;
     document.getElementById('orig').textContent = `Attempted: ${displayHost}`;
+} else {
+    document.getElementById('orig').textContent = 'Attempted: Blocked site';
 }
 
 function hostnameOf(u) {
@@ -18,7 +28,7 @@ function hostnameOf(u) {
     }
 }
 
-const host = hostnameOf(orig || document.referrer || '');
+const host = hostnameOf(orig || '');
 const lockInfoEl = document.getElementById('lockInfo');
 
 function updateLockInfo() {

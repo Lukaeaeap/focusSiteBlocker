@@ -150,8 +150,15 @@
                 <input id="importFile" type="file" accept="application/json" style="display:none" />
             </div>
 
+            <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px;">
+                <div id="ruleCount" style="color:var(--muted);font-weight:700"></div>
+                <div id="ruleError" style="color:var(--danger);font-weight:700;display:none"></div>
+            </div>
             <h2>Blocked Sites</h2>
             <ul id="list"></ul>
+
+            <h2 style="margin-top:18px">Active Locks</h2>
+            <ul id="locksList"></ul>
 
             <p class="tip">Tip: use "Lock" to hard-lock a site for a number of minutes.</p>
         </section>

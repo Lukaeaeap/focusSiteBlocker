@@ -21,12 +21,10 @@ function getActiveHosts(blockedHosts = [], locks = {}, now = Date.now()) {
 
 function makeRule(id, host) {
     const safeHost = (host || '').replace(/^\.+|\.+$/g, '');
-    const redirectBase = '/src/blocked.html';
-    const redirectUrl = `${redirectBase}?url=${encodeURIComponent('https://' + safeHost)}`;
     return {
         id,
         priority: 1,
-        action: { type: 'redirect', redirect: { url: redirectUrl } },
+        action: { type: 'redirect', redirect: { extensionPath: '/src/blocked.html' } },
         condition: {
             urlFilter: `||${safeHost}^`,
             resourceTypes: ['main_frame']

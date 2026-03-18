@@ -84,14 +84,99 @@ function render(list) {
     });
 }
 
+// Render a separate list of active locks with remaining time and stop controls
+function renderLocks() {
+    const ul = document.getElementById('locksList');
+    ul.innerHTML = '';
+    chrome.storage.local.get({ locks: {} }, (r) => {
+        const locks = r.locks || {};
+        const now = Date.now();
+        const entries = Object.entries(locks).filter(([h, until]) => until && now < until);
+        if (entries.length === 0) {
+            const li = document.createElement('li');
+            li.textContent = 'No active locks';
+            ul.appendChild(li);
+            return;
+        }
+        entries.sort((a, b) => a[0].localeCompare(b[0]));
+        entries.forEach(([host, until]) => {
+            const li = document.createElement('li');
+            const left = document.createElement('div');
+            const span = document.createElement('span');
+            span.className = 'host';
+            span.textContent = host;
+            left.appendChild(span);
+
+            const rem = Math.max(0, Math.ceil((until - now) / 1000));
+            const m = Math.floor(rem / 60);
+            const s = rem % 60;
+            const timeSpan = document.createElement('span');
+            timeSpan.className = 'locked';
+            timeSpan.textContent = ` ${m}m ${s}s`;
+            left.appendChild(timeSpan);
+
+            const controls = document.createElement('div');
+            controls.className = 'controls';
+            const stopBtn = document.createElement('button');
+            stopBtn.textContent = 'Stop Lock';
+            stopBtn.addEventListener('click', () => {
+                chrome.runtime.sendMessage({ action: 'stopLock', host }, (res) => {
+                    if (res && res.success) {
+                        renderLocks();
+                        loadAndRender();
+                    } else {
+                        alert('Failed to stop lock');
+                    }
+                });
+            });
+            controls.appendChild(stopBtn);
+
+            li.appendChild(left);
+            li.appendChild(controls);
+            ul.appendChild(li);
+        });
+    });
+}
+
 function save(list) {
     chrome.storage.local.set({ blocked: list });
 }
 
 function loadAndRender() {
-    chrome.storage.local.get({ blocked: [] }, (res) => {
+    const RULE_LIMIT = 5000;
+    const WARN_THRESHOLD = Math.floor(RULE_LIMIT * 0.9);
+    chrome.storage.local.get({ blocked: [], ruleError: '', locks: {} }, (res) => {
         const list = res.blocked || [];
+        const err = res.ruleError || '';
+        const errEl = document.getElementById('ruleError');
+        const ruleCountEl = document.getElementById('ruleCount');
+
+        // compute active hosts (blocked + locked) locally to show rule count
+        const locks = res.locks || {};
+        const active = new Set((list || []).map((h) => normalizeHost(h)).filter(Boolean));
+        Object.keys(locks || {}).forEach((h) => {
+            const nh = normalizeHost(h);
+            if (nh) active.add(nh);
+        });
+        const count = active.size;
+        ruleCountEl.textContent = `Active rules: ${count}`;
+
+        if (count >= RULE_LIMIT) {
+            errEl.style.display = 'block';
+            errEl.textContent = `Too many rules (${count}). DNR cap reached. Reduce blocklist.`;
+        } else if (count >= WARN_THRESHOLD) {
+            errEl.style.display = 'block';
+            errEl.textContent = `Approaching DNR rule limit: ${count}/${RULE_LIMIT}. Consider reducing list.`;
+        } else if (err) {
+            errEl.style.display = 'block';
+            errEl.textContent = err;
+        } else {
+            errEl.style.display = 'none';
+            errEl.textContent = '';
+        }
+
         render(list);
+        renderLocks();
     });
 }
 
