@@ -51,11 +51,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     hostEl.textContent = host;
 
     function updateState() {
-        chrome.storage.local.get({ blocked: [], locks: {}, timeBudgets: {}, budgetUsage: { day: '', usage: {} }, presets: [], appliedPresetIds: [] }, (res) => {
+        chrome.storage.local.get({ blocked: [], locks: {}, timeBudgets: {}, budgetUsage: { day: '', usage: {}, minuteMarks: {} }, presets: [], appliedPresetIds: [] }, (res) => {
             const blocked = res.blocked || [];
             const locks = res.locks || {};
             const budgets = res.timeBudgets || {};
-            const budgetUsage = res.budgetUsage || { day: '', usage: {} };
+            const budgetUsage = res.budgetUsage || { day: '', usage: {}, minuteMarks: {} };
             const presets = Array.isArray(res.presets) ? res.presets : [];
             const appliedIds = new Set((Array.isArray(res.appliedPresetIds) ? res.appliedPresetIds : []).map((id) => String(id)));
 
@@ -135,11 +135,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     unblockBtn.addEventListener('click', () => {
         chrome.runtime.sendMessage({ action: 'removeHostEverywhere', host }, (res) => {
+            const msgErr = chrome.runtime.lastError;
+            if (msgErr) {
+                showMsg(`Failed to remove rules: ${msgErr.message || 'message error'}`, 'red');
+                return;
+            }
             if (res && res.success) {
                 showMsg('Unblocked everywhere: ' + host);
                 updateState();
             } else {
-                showMsg('Failed to remove all rules', 'red');
+                showMsg(`Failed to remove all rules: ${(res && res.error) ? res.error : 'unknown error'}`, 'red');
             }
         });
     });

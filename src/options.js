@@ -6,7 +6,7 @@ let currentList = [];
 let currentLocks = {};
 let currentSchedules = [];
 let currentBudgets = {};
-let currentBudgetUsage = { day: '', usage: {} };
+let currentBudgetUsage = { day: '', usage: {}, minuteMarks: {} };
 let currentPresets = [];
 let currentAppliedPresetIds = [];
 let currentInsightsSettings = { enabled: true };
@@ -78,6 +78,15 @@ function normalizePreset(raw) {
         name: (raw && raw.name ? String(raw.name) : 'Preset').trim(),
         hosts: Array.isArray(raw && raw.hosts) ? raw.hosts.map((h) => normalizeHost(h)).filter(Boolean) : []
     };
+}
+
+function normalizeBudgetUsage(raw) {
+    const day = getLocalDateKey(Date.now());
+    const out = raw && typeof raw === 'object' ? Object.assign({}, raw) : {};
+    out.day = typeof out.day === 'string' ? out.day : day;
+    out.usage = (out.usage && typeof out.usage === 'object') ? Object.assign({}, out.usage) : {};
+    out.minuteMarks = (out.minuteMarks && typeof out.minuteMarks === 'object') ? Object.assign({}, out.minuteMarks) : {};
+    return out;
 }
 
 function save(patch, cb) {
@@ -317,9 +326,12 @@ function renderBudgets() {
         resetBtn.addEventListener('click', () => {
             const dayUsage = Object.assign({}, currentBudgetUsage.usage || {});
             delete dayUsage[host];
+            const minuteMarks = Object.assign({}, currentBudgetUsage.minuteMarks || {});
+            delete minuteMarks[host];
             const nextUsage = {
                 day: getLocalDateKey(Date.now()),
-                usage: dayUsage
+                usage: dayUsage,
+                minuteMarks
             };
             save({ budgetUsage: nextUsage }, loadAndRender);
         });
@@ -468,7 +480,7 @@ function loadAndRender() {
         locks: {},
         schedules: [],
         timeBudgets: {},
-        budgetUsage: { day: '', usage: {} },
+        budgetUsage: { day: '', usage: {}, minuteMarks: {} },
         presets: [],
         appliedPresetIds: [],
         insightsSettings: { enabled: true },
@@ -480,7 +492,7 @@ function loadAndRender() {
         currentLocks = normalizeLocks(res.locks || {});
         currentSchedules = (res.schedules || []).map(normalizeSchedule);
         currentBudgets = Object.assign({}, res.timeBudgets || {});
-        currentBudgetUsage = res.budgetUsage || { day: '', usage: {} };
+        currentBudgetUsage = normalizeBudgetUsage(res.budgetUsage || {});
         currentPresets = (res.presets || []).map(normalizePreset);
         currentAppliedPresetIds = Array.isArray(res.appliedPresetIds) ? res.appliedPresetIds.map((id) => String(id)) : [];
         currentInsightsSettings = res.insightsSettings || { enabled: true };

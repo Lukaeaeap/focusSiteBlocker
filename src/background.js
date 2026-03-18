@@ -4,7 +4,7 @@ let blockedHosts = [];
 let locks = {}; // { host: lockedUntilTimestamp }
 let schedules = []; // [{ id, name, hosts[], days[], start, end, enabled }]
 let timeBudgets = {}; // { host: minutesPerDay }
-let budgetUsage = { day: '', usage: {} }; // { day: YYYY-MM-DD, usage: { host: usedMinutes } }
+let budgetUsage = { day: '', usage: {}, minuteMarks: {} }; // { day: YYYY-MM-DD, usage: { host: usedMinutes }, minuteMarks: { host: minuteKey } }
 let presets = []; // [{ id, name, hosts[] }]
 let appliedPresetIds = []; // [presetId]
 let insightsSettings = { enabled: true };
@@ -20,6 +20,15 @@ function normalizeTimeBudgets(raw) {
         if (!nh || cap <= 0) return;
         out[nh] = cap;
     });
+    return out;
+}
+
+function normalizeBudgetUsage(raw, now = Date.now()) {
+    const day = getLocalDateKey(now);
+    const out = raw && typeof raw === 'object' ? Object.assign({}, raw) : {};
+    out.day = typeof out.day === 'string' ? out.day : day;
+    out.usage = (out.usage && typeof out.usage === 'object') ? Object.assign({}, out.usage) : {};
+    out.minuteMarks = (out.minuteMarks && typeof out.minuteMarks === 'object') ? Object.assign({}, out.minuteMarks) : {};
     return out;
 }
 
@@ -45,7 +54,7 @@ function loadAutomationState() {
     chrome.storage.local.get({
         schedules: [],
         timeBudgets: {},
-        budgetUsage: { day: '', usage: {} },
+        budgetUsage: { day: '', usage: {}, minuteMarks: {} },
         presets: [],
         appliedPresetIds: [],
         insightsSettings: { enabled: true },
@@ -54,7 +63,7 @@ function loadAutomationState() {
     }, (res) => {
         schedules = Array.isArray(res.schedules) ? res.schedules : [];
         timeBudgets = normalizeTimeBudgets(res.timeBudgets || {});
-        budgetUsage = res.budgetUsage || { day: '', usage: {} };
+        budgetUsage = normalizeBudgetUsage(res.budgetUsage || {}, Date.now());
         presets = Array.isArray(res.presets) ? res.presets.map(normalizePreset) : [];
         appliedPresetIds = Array.isArray(res.appliedPresetIds) ? res.appliedPresetIds.map((id) => String(id)) : [];
         insightsSettings = res.insightsSettings || { enabled: true };
@@ -91,7 +100,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
         updateRules();
     }
     if (area === 'local' && changes.budgetUsage) {
-        budgetUsage = changes.budgetUsage.newValue || { day: '', usage: {} };
+        budgetUsage = normalizeBudgetUsage(changes.budgetUsage.newValue || {}, Date.now());
     }
     if (area === 'local' && changes.insightsSettings) {
         insightsSettings = changes.insightsSettings.newValue || { enabled: true };
@@ -178,7 +187,7 @@ function removeHostFromAllAutomation(host, cb) {
             locks: {},
             schedules: [],
             timeBudgets: {},
-            budgetUsage: { day: '', usage: {} },
+            budgetUsage: { day: '', usage: {}, minuteMarks: {} },
             presets: [],
             appliedPresetIds: []
         }, (res) => {
@@ -197,9 +206,11 @@ function removeHostFromAllAutomation(host, cb) {
                 const nextBudgets = Object.assign({}, res.timeBudgets || {});
                 delete nextBudgets[target];
 
-                const nextBudgetUsage = Object.assign({ day: '', usage: {} }, res.budgetUsage || {});
+                const nextBudgetUsage = normalizeBudgetUsage(res.budgetUsage || {}, Date.now());
                 nextBudgetUsage.usage = Object.assign({}, nextBudgetUsage.usage || {});
                 delete nextBudgetUsage.usage[target];
+                nextBudgetUsage.minuteMarks = Object.assign({}, nextBudgetUsage.minuteMarks || {});
+                delete nextBudgetUsage.minuteMarks[target];
 
                 const nextSchedules = (Array.isArray(res.schedules) ? res.schedules : [])
                     .map((s) => normalizeSchedule(s))
@@ -266,11 +277,15 @@ function cleanExpiredLocksInMemory(now = Date.now()) {
 function ensureBudgetDay(now = Date.now()) {
     const day = getLocalDateKey(now);
     if (!budgetUsage || budgetUsage.day !== day) {
-        budgetUsage = { day, usage: {} };
+        budgetUsage = { day, usage: {}, minuteMarks: {} };
         return true;
     }
     if (!budgetUsage.usage || typeof budgetUsage.usage !== 'object') {
         budgetUsage.usage = {};
+        return true;
+    }
+    if (!budgetUsage.minuteMarks || typeof budgetUsage.minuteMarks !== 'object') {
+        budgetUsage.minuteMarks = {};
         return true;
     }
     return false;
@@ -323,9 +338,15 @@ function applySchedulesAndBudgets(now = Date.now()) {
     if (budgetHost && timeBudgets && Object.prototype.hasOwnProperty.call(timeBudgets, budgetHost)) {
         const cap = Math.max(0, Number(timeBudgets[budgetHost]) || 0);
         if (cap > 0) {
-            const used = Number(budgetUsage.usage[budgetHost] || 0) + 1;
-            budgetUsage.usage[budgetHost] = used;
-            budgetChanged = true;
+            const minuteKey = Math.floor(now / 60000);
+            const lastMarked = Number(budgetUsage.minuteMarks[budgetHost] || 0);
+            let used = Number(budgetUsage.usage[budgetHost] || 0);
+            if (lastMarked !== minuteKey) {
+                used += 1;
+                budgetUsage.usage[budgetHost] = used;
+                budgetUsage.minuteMarks[budgetHost] = minuteKey;
+                budgetChanged = true;
+            }
             if (used >= cap) {
                 const lockUntil = endOfDayTs(now);
                 const existing = Number(locks[budgetHost]) || 0;
