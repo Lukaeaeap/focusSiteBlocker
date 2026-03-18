@@ -113,17 +113,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     unblockBtn.addEventListener('click', () => {
-        chrome.storage.local.get({ blocked: [] }, (res) => {
-            const list = res.blocked || [];
-            const idx = list.indexOf(host);
-            if (idx !== -1) {
-                list.splice(idx, 1);
-                chrome.storage.local.set({ blocked: list }, () => {
-                    showMsg('Unblocked ' + host);
-                    updateState();
-                });
+        chrome.runtime.sendMessage({ action: 'removeHostEverywhere', host }, (res) => {
+            if (res && res.success) {
+                showMsg('Unblocked everywhere: ' + host);
+                updateState();
             } else {
-                showMsg('Not in blocked list', 'orange');
+                showMsg('Failed to remove all rules', 'red');
             }
         });
     });

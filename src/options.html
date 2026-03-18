@@ -179,6 +179,13 @@
             gap: 12px;
         }
 
+        .panel {
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 10px 12px;
+            background: #fcfefd;
+        }
+
         details.panel {
             border: 1px solid var(--border);
             border-radius: 12px;
@@ -279,6 +286,7 @@
                 <button class="tab-btn active" data-tab="sites" role="tab" aria-selected="true">Sites</button>
                 <button class="tab-btn" data-tab="insights" role="tab" aria-selected="false">Insights</button>
                 <button class="tab-btn" data-tab="sessions" role="tab" aria-selected="false">Sessions</button>
+                <button class="tab-btn" data-tab="budgets" role="tab" aria-selected="false">Daily Budgets</button>
                 <button class="tab-btn" data-tab="schedule" role="tab" aria-selected="false">Weekly Schedule</button>
                 <button class="tab-btn" data-tab="appearance" role="tab" aria-selected="false">Appearance</button>
             </div>
@@ -337,24 +345,28 @@
 
             <div id="tab-sessions" class="tab-panel" role="tabpanel">
                 <h2>Sessions</h2>
-                <p class="subtle">Presets and daily time budgets.</p>
-                <div class="panel" style="margin-bottom:10px">
-                    <p class="subtle">Time Budgets: allow a site for X minutes/day, then auto-lock it.</p>
-                    <div class="row">
-                        <input id="budgetHost" type="text" placeholder="twitter.com" />
-                        <input id="budgetMinutes" type="number" min="1" max="720" value="15" />
-                        <button id="saveBudgetBtn">Save Budget</button>
-                    </div>
-                    <ul id="budgetsList"></ul>
-                </div>
+                <p class="subtle">Session Presets: save host bundles and apply in one click.</p>
                 <div class="panel">
-                    <p class="subtle">Session Presets: save host bundles and apply in one click.</p>
                     <div class="row">
                         <input id="presetName" type="text" placeholder="Deep Work" />
                         <input id="presetHosts" type="text" placeholder="youtube.com, instagram.com" />
                         <button id="savePresetBtn">Save Preset</button>
                     </div>
                     <ul id="presetsList"></ul>
+                </div>
+            </div>
+
+            <div id="tab-budgets" class="tab-panel" role="tabpanel">
+                <h2>Daily Budgets</h2>
+                <p class="subtle">Set and track limits per website. When a site hits its budget, it locks for the rest
+                    of the day.</p>
+                <div class="panel" style="margin-bottom:10px">
+                    <div class="row">
+                        <input id="budgetHost" type="text" placeholder="twitter.com" />
+                        <input id="budgetMinutes" type="number" min="1" max="720" value="15" />
+                        <button id="saveBudgetBtn">Save Budget</button>
+                    </div>
+                    <ul id="budgetsList"></ul>
                 </div>
             </div>
 
@@ -398,6 +410,29 @@
                             <option value="nature">Nature</option>
                             <option value="dawn">Dawn</option>
                             <option value="ocean">Ocean</option>
+                        </select>
+                    </label>
+                    <label>Card
+                        <select id="cardSelect">
+                            <option value="glass">Glass</option>
+                            <option value="solid">Solid</option>
+                            <option value="minimal">Minimal</option>
+                        </select>
+                    </label>
+                </div>
+                <div class="row">
+                    <label>Accent
+                        <select id="accentSelect">
+                            <option value="forest">Forest</option>
+                            <option value="sky">Sky</option>
+                            <option value="amber">Amber</option>
+                        </select>
+                    </label>
+                    <label>Text density
+                        <select id="densitySelect">
+                            <option value="normal">Normal</option>
+                            <option value="compact">Compact</option>
+                            <option value="spacious">Spacious</option>
                         </select>
                     </label>
                 </div>

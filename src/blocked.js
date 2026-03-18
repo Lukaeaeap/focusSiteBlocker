@@ -57,14 +57,27 @@ function pickMessage(tone) {
 }
 
 function applyBlockedExperience() {
-    chrome.storage.local.get({ blockedExperience: { tone: 'gentle', style: 'nature' } }, (res) => {
+    chrome.storage.local.get({ blockedExperience: { tone: 'gentle', style: 'nature', card: 'glass', accent: 'forest', density: 'normal' } }, (res) => {
         const cfg = res.blockedExperience || {};
         const tone = cfg.tone || 'gentle';
         const style = cfg.style || 'nature';
+        const card = cfg.card || 'glass';
+        const accent = cfg.accent || 'forest';
+        const density = cfg.density || 'normal';
 
         document.body.classList.remove('theme-dawn', 'theme-ocean');
         if (style === 'dawn') document.body.classList.add('theme-dawn');
         if (style === 'ocean') document.body.classList.add('theme-ocean');
+
+        document.body.classList.remove('card-solid', 'card-minimal', 'card-glass');
+        document.body.classList.add(`card-${card}`);
+
+        document.body.classList.remove('accent-forest', 'accent-sky', 'accent-amber');
+        document.body.classList.add(`accent-${accent}`);
+
+        document.body.classList.remove('text-compact', 'text-spacious');
+        if (density === 'compact') document.body.classList.add('text-compact');
+        if (density === 'spacious') document.body.classList.add('text-spacious');
 
         if (motivationEl) motivationEl.textContent = pickMessage(tone);
     });

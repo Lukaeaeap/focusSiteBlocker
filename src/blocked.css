@@ -15,14 +15,46 @@ body {
 
 body.theme-dawn {
     background-image:
-        linear-gradient(160deg, rgba(255, 244, 224, 0.25), rgba(251, 227, 204, 0.18)),
-        url('./assets/focus-landscape.svg');
+        linear-gradient(160deg, rgba(255, 245, 231, 0.24), rgba(255, 219, 187, 0.16)),
+        url('./assets/focus-dawn.svg');
 }
 
 body.theme-ocean {
     background-image:
-        linear-gradient(160deg, rgba(220, 242, 250, 0.25), rgba(191, 227, 245, 0.18)),
-        url('./assets/focus-landscape.svg');
+        linear-gradient(160deg, rgba(223, 245, 255, 0.22), rgba(193, 234, 253, 0.16)),
+        url('./assets/focus-ocean.svg');
+}
+
+body.card-solid .center {
+    background: rgba(245, 252, 248, 0.98);
+    box-shadow: 0 12px 34px rgba(17, 45, 35, 0.16);
+}
+
+body.card-minimal .center {
+    background: rgba(255, 255, 255, 0.84);
+    border-color: rgba(40, 109, 79, 0.1);
+    box-shadow: 0 8px 20px rgba(17, 45, 35, 0.1);
+}
+
+body.card-glass .center {
+    background: rgba(245, 255, 252, 0.7);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+body.accent-forest #home,
+body.accent-forest .open-settings {
+    background: linear-gradient(135deg, #2e8263, #286f94);
+}
+
+body.accent-sky #home,
+body.accent-sky .open-settings {
+    background: linear-gradient(135deg, #2f7fa2, #396bb1);
+}
+
+body.accent-amber #home,
+body.accent-amber .open-settings {
+    background: linear-gradient(135deg, #c77746, #a45a2d);
 }
 
 .center {
@@ -83,6 +115,15 @@ h1 {
     color: #345a4e;
     margin-bottom: 6px;
     font-size: 1.03rem;
+}
+
+body.text-compact .subtitle {
+    font-size: 0.95rem;
+}
+
+body.text-spacious .subtitle {
+    font-size: 1.12rem;
+    line-height: 1.5;
 }
 
 #lockInfo {

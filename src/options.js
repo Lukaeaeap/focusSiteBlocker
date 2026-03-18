@@ -11,7 +11,7 @@ let currentPresets = [];
 let currentInsightsSettings = { enabled: true };
 let currentInsights = { days: {} };
 let currentInsightsMeta = { lastUpdated: 0 };
-let currentBlockedExperience = { tone: 'gentle', style: 'nature' };
+let currentBlockedExperience = { tone: 'gentle', style: 'nature', card: 'glass', accent: 'forest', density: 'normal' };
 const lockLabelByHost = new Map();
 
 function uid(prefix) {
@@ -83,6 +83,16 @@ function save(patch, cb) {
     chrome.storage.local.set(patch, cb || (() => { }));
 }
 
+function removeHostEverywhere(host, onDone) {
+    chrome.runtime.sendMessage({ action: 'removeHostEverywhere', host }, (res) => {
+        if (res && res.success) {
+            if (onDone) onDone(true);
+            return;
+        }
+        if (onDone) onDone(false);
+    });
+}
+
 function renderRuleStatus(list, locks, err) {
     const RULE_LIMIT = 5000;
     const WARN_THRESHOLD = Math.floor(RULE_LIMIT * 0.9);
@@ -133,7 +143,7 @@ function renderBlockedList(list) {
     ul.innerHTML = '';
     lockLabelByHost.clear();
 
-    list.forEach((host, idx) => {
+    list.forEach((host) => {
         const nhost = normalizeHost(host) || host;
         const li = document.createElement('li');
         const left = document.createElement('div');
@@ -178,17 +188,18 @@ function renderBlockedList(list) {
         removeBtn.className = 'remove';
         removeBtn.textContent = 'Remove';
         removeBtn.addEventListener('click', () => {
-            if (currentLocks[nhost] && Date.now() < currentLocks[nhost]) {
-                return alert('This site is currently locked and cannot be removed');
-            }
             const confirmText = prompt(`Type the domain to confirm removal:\n${host}`);
             if (!confirmText) return;
             if (confirmText.trim().toLowerCase() !== host.toLowerCase()) {
                 return alert('Confirmation did not match. Removal cancelled.');
             }
-            const next = currentList.slice();
-            next.splice(idx, 1);
-            save({ blocked: next }, loadAndRender);
+            removeHostEverywhere(nhost, (ok) => {
+                if (!ok) {
+                    alert('Failed to remove this site from all rules');
+                    return;
+                }
+                loadAndRender();
+            });
         });
 
         actions.appendChild(lockBtn);
@@ -282,6 +293,19 @@ function renderBudgets() {
             save({ timeBudgets: next }, loadAndRender);
         });
 
+        const resetBtn = document.createElement('button');
+        resetBtn.textContent = 'Reset Today';
+        resetBtn.addEventListener('click', () => {
+            const dayUsage = Object.assign({}, currentBudgetUsage.usage || {});
+            delete dayUsage[host];
+            const nextUsage = {
+                day: getLocalDateKey(Date.now()),
+                usage: dayUsage
+            };
+            save({ budgetUsage: nextUsage }, loadAndRender);
+        });
+
+        controls.appendChild(resetBtn);
         controls.appendChild(removeBtn);
         li.appendChild(left);
         li.appendChild(controls);
@@ -377,8 +401,14 @@ function refreshInsightsUpdatedLabel() {
 function renderBlockedExperience() {
     const toneSelect = document.getElementById('toneSelect');
     const styleSelect = document.getElementById('styleSelect');
+    const cardSelect = document.getElementById('cardSelect');
+    const accentSelect = document.getElementById('accentSelect');
+    const densitySelect = document.getElementById('densitySelect');
     if (toneSelect) toneSelect.value = currentBlockedExperience.tone || 'gentle';
     if (styleSelect) styleSelect.value = currentBlockedExperience.style || 'nature';
+    if (cardSelect) cardSelect.value = currentBlockedExperience.card || 'glass';
+    if (accentSelect) accentSelect.value = currentBlockedExperience.accent || 'forest';
+    if (densitySelect) densitySelect.value = currentBlockedExperience.density || 'normal';
 }
 
 function loadAndRender() {
@@ -393,7 +423,7 @@ function loadAndRender() {
         insightsSettings: { enabled: true },
         insights: { days: {} },
         insightsMeta: { lastUpdated: 0 },
-        blockedExperience: { tone: 'gentle', style: 'nature' }
+        blockedExperience: { tone: 'gentle', style: 'nature', card: 'glass', accent: 'forest', density: 'normal' }
     }, (res) => {
         currentList = (res.blocked || []).slice();
         currentLocks = normalizeLocks(res.locks || {});
@@ -404,7 +434,7 @@ function loadAndRender() {
         currentInsightsSettings = res.insightsSettings || { enabled: true };
         currentInsights = res.insights || { days: {} };
         currentInsightsMeta = res.insightsMeta || { lastUpdated: 0 };
-        currentBlockedExperience = res.blockedExperience || { tone: 'gentle', style: 'nature' };
+        currentBlockedExperience = Object.assign({ tone: 'gentle', style: 'nature', card: 'glass', accent: 'forest', density: 'normal' }, res.blockedExperience || {});
 
         renderRuleStatus(currentList, currentLocks, res.ruleError || '');
         renderBlockedList(currentList);
@@ -442,6 +472,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const insightsEnabled = document.getElementById('insightsEnabled');
     const toneSelect = document.getElementById('toneSelect');
     const styleSelect = document.getElementById('styleSelect');
+    const cardSelect = document.getElementById('cardSelect');
+    const accentSelect = document.getElementById('accentSelect');
+    const densitySelect = document.getElementById('densitySelect');
 
     setupTabs();
     loadAndRender();
@@ -592,12 +625,23 @@ document.addEventListener('DOMContentLoaded', () => {
         save({ insightsSettings: { enabled: !!insightsEnabled.checked } }, loadAndRender);
     });
 
-    toneSelect.addEventListener('change', () => {
-        save({ blockedExperience: { tone: toneSelect.value, style: styleSelect.value } });
-    });
-    styleSelect.addEventListener('change', () => {
-        save({ blockedExperience: { tone: toneSelect.value, style: styleSelect.value } });
-    });
+    function saveAppearance() {
+        save({
+            blockedExperience: {
+                tone: toneSelect.value,
+                style: styleSelect.value,
+                card: cardSelect ? cardSelect.value : 'glass',
+                accent: accentSelect ? accentSelect.value : 'forest',
+                density: densitySelect ? densitySelect.value : 'normal'
+            }
+        });
+    }
+
+    toneSelect.addEventListener('change', saveAppearance);
+    styleSelect.addEventListener('change', saveAppearance);
+    if (cardSelect) cardSelect.addEventListener('change', saveAppearance);
+    if (accentSelect) accentSelect.addEventListener('change', saveAppearance);
+    if (densitySelect) densitySelect.addEventListener('change', saveAppearance);
 
     chrome.storage.onChanged.addListener((changes, area) => {
         if (area === 'local' && (changes.blocked || changes.locks || changes.ruleError || changes.schedules || changes.timeBudgets || changes.budgetUsage || changes.presets || changes.insights || changes.insightsMeta || changes.insightsSettings || changes.blockedExperience)) {

@@ -68,9 +68,12 @@ chrome.storage.onChanged.addListener((changes, area) => {
     }
     if (area === 'local' && changes.schedules) {
         schedules = changes.schedules.newValue || [];
+        applySchedulesAndBudgets(Date.now());
+        updateRules();
     }
     if (area === 'local' && changes.timeBudgets) {
         timeBudgets = normalizeTimeBudgets(changes.timeBudgets.newValue || {});
+        applySchedulesAndBudgets(Date.now());
     }
     if (area === 'local' && changes.budgetUsage) {
         budgetUsage = changes.budgetUsage.newValue || { day: '', usage: {} };
@@ -104,6 +107,92 @@ function normalizeSchedule(raw) {
         end: raw && raw.end ? String(raw.end) : '17:00',
         enabled: raw && raw.enabled !== false
     };
+}
+
+function enforceLockedHostsInOpenTabs(now = Date.now()) {
+    const lockedHosts = new Set();
+    Object.entries(locks || {}).forEach(([h, until]) => {
+        if (Number(until) > now) {
+            const nh = normalizeHost(h);
+            if (nh) lockedHosts.add(nh);
+        }
+    });
+    if (!lockedHosts.size) return;
+
+    chrome.tabs.query({}, (tabs) => {
+        (tabs || []).forEach((tab) => {
+            const url = tab && tab.url ? tab.url : '';
+            if (!url || url.startsWith('chrome-extension://') || url.startsWith('chrome://') || url.startsWith('about:')) return;
+            const tabHost = normalizeHost(url);
+            if (!tabHost) return;
+            const covered = Array.from(lockedHosts).some((lockedHost) => (
+                tabHost === lockedHost || tabHost.endsWith(`.${lockedHost}`)
+            ));
+            if (!covered) return;
+            const blockedUrl = chrome.runtime.getURL('src/blocked.html') + '?url=' + encodeURIComponent(url);
+            try { chrome.tabs.update(tab.id, { url: blockedUrl }); } catch (e) { /* ignore */ }
+        });
+    });
+}
+
+function removeHostFromAllAutomation(host, cb) {
+    const target = normalizeHost(host || '');
+    if (!target) {
+        cb({ success: false, error: 'missing host' });
+        return;
+    }
+
+    chrome.storage.local.get({
+        blocked: [],
+        locks: {},
+        schedules: [],
+        timeBudgets: {},
+        budgetUsage: { day: '', usage: {} },
+        presets: []
+    }, (res) => {
+        const nextBlocked = (res.blocked || []).map((h) => normalizeHost(h)).filter(Boolean).filter((h) => h !== target);
+
+        const nextLocks = Object.assign({}, res.locks || {});
+        delete nextLocks[target];
+
+        const nextBudgets = Object.assign({}, res.timeBudgets || {});
+        delete nextBudgets[target];
+
+        const nextBudgetUsage = Object.assign({ day: '', usage: {} }, res.budgetUsage || {});
+        nextBudgetUsage.usage = Object.assign({}, nextBudgetUsage.usage || {});
+        delete nextBudgetUsage.usage[target];
+
+        const nextSchedules = (Array.isArray(res.schedules) ? res.schedules : [])
+            .map((s) => normalizeSchedule(s))
+            .map((s) => Object.assign({}, s, { hosts: (s.hosts || []).filter((h) => h !== target) }))
+            .filter((s) => (s.hosts || []).length > 0);
+
+        const nextPresets = (Array.isArray(res.presets) ? res.presets : [])
+            .map((p) => ({
+                id: p && p.id ? String(p.id) : '',
+                name: p && p.name ? String(p.name) : 'Preset',
+                hosts: Array.isArray(p && p.hosts) ? p.hosts.map((h) => normalizeHost(h)).filter((h) => h && h !== target) : []
+            }))
+            .filter((p) => p.id && p.hosts.length > 0);
+
+        blockedHosts = nextBlocked;
+        locks = nextLocks;
+        schedules = nextSchedules;
+        timeBudgets = normalizeTimeBudgets(nextBudgets);
+        budgetUsage = nextBudgetUsage;
+
+        chrome.storage.local.set({
+            blocked: nextBlocked,
+            locks: nextLocks,
+            schedules: nextSchedules,
+            timeBudgets: nextBudgets,
+            budgetUsage: nextBudgetUsage,
+            presets: nextPresets
+        }, () => {
+            updateRules();
+            cb({ success: true });
+        });
+    });
 }
 
 function cleanExpiredLocksInMemory(now = Date.now()) {
@@ -198,7 +287,14 @@ function applySchedulesAndBudgets(now = Date.now()) {
 
     if (cleanExpiredLocksInMemory(now)) locksChanged = true;
 
-    if (locksChanged) chrome.storage.local.set({ locks });
+    if (locksChanged) {
+        chrome.storage.local.set({ locks });
+        updateRules();
+        enforceLockedHostsInOpenTabs(now);
+    } else if (hasActiveLocks) {
+        // Keep enforcing active locks for already-open tabs even when lock timestamps did not change.
+        enforceLockedHostsInOpenTabs(now);
+    }
     if (budgetChanged) chrome.storage.local.set({ budgetUsage });
     if (insightsChanged) chrome.storage.local.set({ insights, insightsMeta });
 }
@@ -316,11 +412,17 @@ try {
 }
 
 if (chrome.tabs && chrome.tabs.onActivated) {
-    chrome.tabs.onActivated.addListener(() => refreshActiveTabHost());
+    chrome.tabs.onActivated.addListener(() => {
+        refreshActiveTabHost();
+        applySchedulesAndBudgets(Date.now());
+    });
 }
 if (chrome.tabs && chrome.tabs.onUpdated) {
     chrome.tabs.onUpdated.addListener((_tabId, changeInfo) => {
-        if (changeInfo && changeInfo.status === 'complete') refreshActiveTabHost();
+        if (changeInfo && changeInfo.status === 'complete') {
+            refreshActiveTabHost();
+            applySchedulesAndBudgets(Date.now());
+        }
     });
 }
 
@@ -339,6 +441,8 @@ chrome.runtime.onMessage.addListener((msg, sender, cb) => {
         const until = Date.now() + minutes * 60 * 1000;
         locks[host] = until;
         chrome.storage.local.set({ locks }, () => {
+            updateRules();
+            enforceLockedHostsInOpenTabs(Date.now());
             cb({ success: true, until });
         });
         return true; // will call cb asynchronously
@@ -349,6 +453,7 @@ chrome.runtime.onMessage.addListener((msg, sender, cb) => {
         if (locks[host]) {
             delete locks[host];
             chrome.storage.local.set({ locks }, () => {
+                updateRules();
                 console.debug('SiteBlocker: stopped lock for', host);
                 cb({ success: true });
             });
@@ -357,6 +462,10 @@ chrome.runtime.onMessage.addListener((msg, sender, cb) => {
         console.debug('SiteBlocker: stopLock failed, not locked', host);
         cb({ success: false, error: 'not locked' });
         return;
+    }
+    if (msg.action === 'removeHostEverywhere') {
+        removeHostFromAllAutomation(msg.host, cb);
+        return true;
     }
     if (msg.action === 'blockedAttempt') {
         if (recordInsights({ blockedAttempts: 1 }, Date.now())) {
