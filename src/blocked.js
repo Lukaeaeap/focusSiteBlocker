@@ -79,39 +79,15 @@ document.getElementById('home').addEventListener('click', (e) => {
 });
 
 const optionsLink = document.getElementById('optionsLink');
-let holdTimer = null;
-let held = false;
-function clearHold() {
-    if (holdTimer) {
-        clearTimeout(holdTimer);
-        holdTimer = null;
-    }
-    held = false;
-    optionsLink.textContent = 'Open Options';
+if (optionsLink) {
+    optionsLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        // Open options directly
+        try {
+            window.location.href = chrome.runtime.getURL('src/options.html');
+        } catch (err) {
+            // fallback for non-extension contexts
+            window.location.href = 'src/options.html';
+        }
+    });
 }
-
-function beginHold() {
-    clearHold();
-    optionsLink.textContent = 'Hold to open settings...';
-    holdTimer = setTimeout(() => {
-        held = true;
-        optionsLink.textContent = 'Release to open settings';
-    }, 1200);
-}
-
-function tryOpenOptions() {
-    clearHold();
-    if (held) {
-        window.location.href = chrome.runtime.getURL('src/options.html');
-    }
-}
-
-optionsLink.addEventListener('click', (e) => {
-    // prevent normal click — require hold
-    e.preventDefault();
-});
-optionsLink.addEventListener('mousedown', beginHold);
-optionsLink.addEventListener('touchstart', beginHold);
-document.addEventListener('mouseup', tryOpenOptions);
-document.addEventListener('touchend', tryOpenOptions);
-optionsLink.addEventListener('mouseleave', clearHold);

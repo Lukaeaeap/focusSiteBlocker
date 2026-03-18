@@ -49,13 +49,12 @@ function getActiveHosts() {
     return Array.from(hosts);
 }
 
-function makeRule(host) {
+function makeRule(host, explicitId) {
     try {
         const raw = (typeof host === 'string' || typeof host === 'number') ? String(host) : '';
         const safeHost = (typeof normalizeHost === 'function') ? normalizeHost(raw) : raw.replace(/^\.+|\.+$/g, '');
-        // Use `extensionPath` for redirects to avoid cross-scheme navigation errors
-        // (chrome-extension:// redirects from certain error pages are blocked).
-        const id = (typeof stableId === 'function') ? stableId(safeHost) : Math.floor(Math.random() * 1000000) + 1;
+        // Use deterministic id when possible (stableId), allow explicit id to be provided
+        let id = typeof explicitId === 'number' ? explicitId : (typeof stableId === 'function' ? stableId(safeHost) : Math.floor(Math.random() * 1000000) + 1);
         return {
             id,
             priority: 1,
@@ -72,8 +71,20 @@ function makeRule(host) {
 }
 
 function updateRules() {
-    const hosts = getActiveHosts();
-    const newRules = hosts.map((h) => makeRule(h));
+    // Sort hosts to ensure deterministic rule ordering
+    const hosts = getActiveHosts().slice().sort();
+    const usedIds = new Set();
+    const newRules = [];
+    for (const h of hosts) {
+        // derive deterministic id and avoid collisions by bumping
+        let baseId = (typeof stableId === 'function') ? stableId(h) : Math.floor(Math.random() * 1000000) + 1;
+        let id = baseId;
+        while (usedIds.has(id)) {
+            id = id + 1;
+        }
+        usedIds.add(id);
+        newRules.push(makeRule(h, id));
+    }
     if (newRules.length > RULE_LIMIT) {
         console.error('SiteBlocker: too many dynamic rules', newRules.length);
         // Surface the error to the options UI
@@ -182,7 +193,14 @@ try {
                 const url = details.url || '';
                 if (!url || url.startsWith('chrome-extension:') || url.startsWith('chrome-error:')) return;
                 let host = '';
-                try { host = (new URL(url)).hostname.replace(/^www\./, '').toLowerCase(); } catch (e) { return; }
+                try {
+                    // prefer normalizeHost when available to keep normalization consistent
+                    if (typeof normalizeHost === 'function') {
+                        host = normalizeHost(url);
+                    } else {
+                        host = (new URL(url)).hostname.replace(/^www\./, '').toLowerCase();
+                    }
+                } catch (e) { return; }
                 const active = getActiveHosts();
                 if (!active || !active.includes(host)) return;
 
