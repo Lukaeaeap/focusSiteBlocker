@@ -1,10 +1,52 @@
-// `normalizeHost` and `formatCompactDuration` are provided by `lib.js`.
+// `normalizeHost`, `formatCompactDuration` and `getLocalDateKey` are provided by `lib.js`.
 
 const FEEDBACK_URL = 'https://github.com/Lukaeaeap/focusSiteBlocker/issues/new?labels=feedback&title=Feedback%3A%20';
 
 let currentList = [];
 let currentLocks = {};
+let currentSchedules = [];
+let currentBudgets = {};
+let currentBudgetUsage = { day: '', usage: {} };
+let currentPresets = [];
+let currentInsightsSettings = { enabled: true };
+let currentInsights = { days: {} };
+let currentBlockedExperience = { tone: 'gentle', style: 'nature' };
 const lockLabelByHost = new Map();
+
+function uid(prefix) {
+    return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function setupTabs() {
+    const tabButtons = Array.from(document.querySelectorAll('.tab-btn'));
+    const tabPanels = Array.from(document.querySelectorAll('.tab-panel'));
+    if (!tabButtons.length || !tabPanels.length) return;
+
+    function activate(tabName) {
+        tabButtons.forEach((btn) => {
+            const on = btn.dataset.tab === tabName;
+            btn.classList.toggle('active', on);
+            btn.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+        tabPanels.forEach((panel) => {
+            const on = panel.id === `tab-${tabName}`;
+            panel.classList.toggle('active', on);
+        });
+    }
+
+    tabButtons.forEach((btn) => {
+        btn.addEventListener('click', () => activate(btn.dataset.tab));
+    });
+
+    activate('sites');
+}
+
+function parseHostsCsv(input) {
+    return (input || '')
+        .split(',')
+        .map((h) => normalizeHost(h))
+        .filter(Boolean);
+}
 
 function normalizeLocks(rawLocks) {
     const out = {};
@@ -16,8 +58,28 @@ function normalizeLocks(rawLocks) {
     return out;
 }
 
-function save(list) {
-    chrome.storage.local.set({ blocked: list });
+function normalizeSchedule(raw) {
+    return {
+        id: raw && raw.id ? String(raw.id) : uid('sch'),
+        name: (raw && raw.name ? String(raw.name) : 'Schedule').trim(),
+        hosts: Array.isArray(raw && raw.hosts) ? raw.hosts.map((h) => normalizeHost(h)).filter(Boolean) : [],
+        days: Array.isArray(raw && raw.days) ? raw.days.map(Number).filter((d) => d >= 0 && d <= 6) : [],
+        start: raw && raw.start ? String(raw.start) : '09:00',
+        end: raw && raw.end ? String(raw.end) : '17:00',
+        enabled: raw && raw.enabled !== false
+    };
+}
+
+function normalizePreset(raw) {
+    return {
+        id: raw && raw.id ? String(raw.id) : uid('preset'),
+        name: (raw && raw.name ? String(raw.name) : 'Preset').trim(),
+        hosts: Array.isArray(raw && raw.hosts) ? raw.hosts.map((h) => normalizeHost(h)).filter(Boolean) : []
+    };
+}
+
+function save(patch, cb) {
+    chrome.storage.local.set(patch, cb || (() => { }));
 }
 
 function renderRuleStatus(list, locks, err) {
@@ -65,7 +127,7 @@ function updateLockCountdowns() {
     });
 }
 
-function render(list) {
+function renderBlockedList(list) {
     const ul = document.getElementById('list');
     ul.innerHTML = '';
     lockLabelByHost.clear();
@@ -96,11 +158,8 @@ function render(list) {
             const minutes = prompt('Lock duration in minutes (default 5):', '5');
             const m = Number(minutes) || 5;
             chrome.runtime.sendMessage({ action: 'startLock', host: nhost, minutes: m }, (res) => {
-                if (res && res.success) {
-                    loadAndRender();
-                } else {
-                    alert('Failed to start lock');
-                }
+                if (res && res.success) loadAndRender();
+                else alert('Failed to start lock');
             });
         });
 
@@ -109,37 +168,31 @@ function render(list) {
         unlockBtn.textContent = 'Unlock';
         unlockBtn.addEventListener('click', () => {
             chrome.runtime.sendMessage({ action: 'stopLock', host: nhost }, (res) => {
-                if (res && res.success) {
-                    loadAndRender();
-                } else {
-                    alert('No active lock for this host');
-                }
+                if (res && res.success) loadAndRender();
+                else alert('No active lock for this host');
             });
         });
 
-        const btn = document.createElement('button');
-        btn.className = 'remove';
-        btn.textContent = 'Remove';
-        btn.addEventListener('click', () => {
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'remove';
+        removeBtn.textContent = 'Remove';
+        removeBtn.addEventListener('click', () => {
             if (currentLocks[nhost] && Date.now() < currentLocks[nhost]) {
                 return alert('This site is currently locked and cannot be removed');
             }
-
             const confirmText = prompt(`Type the domain to confirm removal:\n${host}`);
             if (!confirmText) return;
             if (confirmText.trim().toLowerCase() !== host.toLowerCase()) {
                 return alert('Confirmation did not match. Removal cancelled.');
             }
-
             const next = currentList.slice();
             next.splice(idx, 1);
-            save(next);
-            loadAndRender();
+            save({ blocked: next }, loadAndRender);
         });
 
         actions.appendChild(lockBtn);
         actions.appendChild(unlockBtn);
-        actions.appendChild(btn);
+        actions.appendChild(removeBtn);
 
         li.appendChild(left);
         li.appendChild(actions);
@@ -149,12 +202,196 @@ function render(list) {
     updateLockCountdowns();
 }
 
+function dayLabel(days) {
+    const names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    return (days || []).sort((a, b) => a - b).map((d) => names[d] || '?').join(', ');
+}
+
+function renderSchedules() {
+    const ul = document.getElementById('schedulesList');
+    if (!ul) return;
+    ul.innerHTML = '';
+
+    if (!currentSchedules.length) {
+        const li = document.createElement('li');
+        li.textContent = 'No schedules yet';
+        ul.appendChild(li);
+        return;
+    }
+
+    currentSchedules.forEach((s) => {
+        const li = document.createElement('li');
+        const left = document.createElement('div');
+        left.innerHTML = `<strong>${s.name}</strong><div>${s.hosts.join(', ') || '(no hosts)'}</div><div>${dayLabel(s.days)} • ${s.start}-${s.end}</div>`;
+
+        const controls = document.createElement('div');
+        controls.className = 'controls';
+        const toggleBtn = document.createElement('button');
+        toggleBtn.textContent = s.enabled ? 'Disable' : 'Enable';
+        toggleBtn.addEventListener('click', () => {
+            const next = currentSchedules.map((x) => x.id === s.id ? Object.assign({}, x, { enabled: !x.enabled }) : x);
+            save({ schedules: next }, loadAndRender);
+        });
+
+        const delBtn = document.createElement('button');
+        delBtn.className = 'remove';
+        delBtn.textContent = 'Delete';
+        delBtn.addEventListener('click', () => {
+            const next = currentSchedules.filter((x) => x.id !== s.id);
+            save({ schedules: next }, loadAndRender);
+        });
+
+        controls.appendChild(toggleBtn);
+        controls.appendChild(delBtn);
+        li.appendChild(left);
+        li.appendChild(controls);
+        ul.appendChild(li);
+    });
+}
+
+function renderBudgets() {
+    const ul = document.getElementById('budgetsList');
+    if (!ul) return;
+    ul.innerHTML = '';
+    const day = getLocalDateKey(Date.now());
+    const usage = (currentBudgetUsage.day === day && currentBudgetUsage.usage) ? currentBudgetUsage.usage : {};
+
+    const entries = Object.entries(currentBudgets || {}).sort((a, b) => a[0].localeCompare(b[0]));
+    if (!entries.length) {
+        const li = document.createElement('li');
+        li.textContent = 'No time budgets yet';
+        ul.appendChild(li);
+        return;
+    }
+
+    entries.forEach(([host, minutes]) => {
+        const used = Number(usage[host] || 0);
+        const li = document.createElement('li');
+        const left = document.createElement('div');
+        left.innerHTML = `<strong>${host}</strong><div>${used}/${minutes} min used today</div>`;
+
+        const controls = document.createElement('div');
+        controls.className = 'controls';
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'remove';
+        removeBtn.textContent = 'Remove';
+        removeBtn.addEventListener('click', () => {
+            const next = Object.assign({}, currentBudgets);
+            delete next[host];
+            save({ timeBudgets: next }, loadAndRender);
+        });
+
+        controls.appendChild(removeBtn);
+        li.appendChild(left);
+        li.appendChild(controls);
+        ul.appendChild(li);
+    });
+}
+
+function renderPresets() {
+    const ul = document.getElementById('presetsList');
+    if (!ul) return;
+    ul.innerHTML = '';
+    if (!currentPresets.length) {
+        const li = document.createElement('li');
+        li.textContent = 'No presets yet';
+        ul.appendChild(li);
+        return;
+    }
+
+    currentPresets.forEach((preset) => {
+        const li = document.createElement('li');
+        const left = document.createElement('div');
+        left.innerHTML = `<strong>${preset.name}</strong><div>${preset.hosts.join(', ') || '(no hosts)'}</div>`;
+
+        const controls = document.createElement('div');
+        controls.className = 'controls';
+
+        const applyBtn = document.createElement('button');
+        applyBtn.textContent = 'Apply';
+        applyBtn.addEventListener('click', () => {
+            const merged = new Set(currentList.concat(preset.hosts).map((h) => normalizeHost(h)).filter(Boolean));
+            save({ blocked: Array.from(merged) }, loadAndRender);
+        });
+
+        const delBtn = document.createElement('button');
+        delBtn.className = 'remove';
+        delBtn.textContent = 'Delete';
+        delBtn.addEventListener('click', () => {
+            const next = currentPresets.filter((x) => x.id !== preset.id);
+            save({ presets: next }, loadAndRender);
+        });
+
+        controls.appendChild(applyBtn);
+        controls.appendChild(delBtn);
+        li.appendChild(left);
+        li.appendChild(controls);
+        ul.appendChild(li);
+    });
+}
+
+function renderInsights() {
+    const day = getLocalDateKey(Date.now());
+    const days = (currentInsights && currentInsights.days) ? currentInsights.days : {};
+    const today = days[day] || { blockedAttempts: 0, focusMinutes: 0 };
+
+    const past7 = [];
+    for (let i = 0; i < 7; i++) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const key = getLocalDateKey(d.getTime());
+        past7.push(days[key] || { blockedAttempts: 0, focusMinutes: 0 });
+    }
+
+    const weekBlocked = past7.reduce((a, b) => a + Number(b.blockedAttempts || 0), 0);
+    const weekFocus = past7.reduce((a, b) => a + Number(b.focusMinutes || 0), 0);
+
+    document.getElementById('todayBlocked').textContent = String(today.blockedAttempts || 0);
+    document.getElementById('todayFocus').textContent = String(today.focusMinutes || 0);
+    document.getElementById('weekBlocked').textContent = String(weekBlocked);
+    document.getElementById('weekFocus').textContent = String(weekFocus);
+
+    const toggle = document.getElementById('insightsEnabled');
+    if (toggle) toggle.checked = !(currentInsightsSettings && currentInsightsSettings.enabled === false);
+}
+
+function renderBlockedExperience() {
+    const toneSelect = document.getElementById('toneSelect');
+    const styleSelect = document.getElementById('styleSelect');
+    if (toneSelect) toneSelect.value = currentBlockedExperience.tone || 'gentle';
+    if (styleSelect) styleSelect.value = currentBlockedExperience.style || 'nature';
+}
+
 function loadAndRender() {
-    chrome.storage.local.get({ blocked: [], ruleError: '', locks: {} }, (res) => {
+    chrome.storage.local.get({
+        blocked: [],
+        ruleError: '',
+        locks: {},
+        schedules: [],
+        timeBudgets: {},
+        budgetUsage: { day: '', usage: {} },
+        presets: [],
+        insightsSettings: { enabled: true },
+        insights: { days: {} },
+        blockedExperience: { tone: 'gentle', style: 'nature' }
+    }, (res) => {
         currentList = (res.blocked || []).slice();
         currentLocks = normalizeLocks(res.locks || {});
+        currentSchedules = (res.schedules || []).map(normalizeSchedule);
+        currentBudgets = Object.assign({}, res.timeBudgets || {});
+        currentBudgetUsage = res.budgetUsage || { day: '', usage: {} };
+        currentPresets = (res.presets || []).map(normalizePreset);
+        currentInsightsSettings = res.insightsSettings || { enabled: true };
+        currentInsights = res.insights || { days: {} };
+        currentBlockedExperience = res.blockedExperience || { tone: 'gentle', style: 'nature' };
+
         renderRuleStatus(currentList, currentLocks, res.ruleError || '');
-        render(currentList);
+        renderBlockedList(currentList);
+        renderSchedules();
+        renderBudgets();
+        renderPresets();
+        renderInsights();
+        renderBlockedExperience();
     });
 }
 
@@ -166,67 +403,115 @@ document.addEventListener('DOMContentLoaded', () => {
     const importFile = document.getElementById('importFile');
     const feedbackBtn = document.getElementById('feedbackBtn');
 
+    const addScheduleBtn = document.getElementById('addScheduleBtn');
+    const scheduleName = document.getElementById('scheduleName');
+    const scheduleHosts = document.getElementById('scheduleHosts');
+    const scheduleStart = document.getElementById('scheduleStart');
+    const scheduleEnd = document.getElementById('scheduleEnd');
+    const scheduleDaysWrap = document.getElementById('scheduleDays');
+
+    const budgetHost = document.getElementById('budgetHost');
+    const budgetMinutes = document.getElementById('budgetMinutes');
+    const saveBudgetBtn = document.getElementById('saveBudgetBtn');
+
+    const presetName = document.getElementById('presetName');
+    const presetHosts = document.getElementById('presetHosts');
+    const savePresetBtn = document.getElementById('savePresetBtn');
+
+    const insightsEnabled = document.getElementById('insightsEnabled');
+    const toneSelect = document.getElementById('toneSelect');
+    const styleSelect = document.getElementById('styleSelect');
+
+    setupTabs();
     loadAndRender();
 
     addBtn.addEventListener('click', () => {
         const host = normalizeHost(input.value);
         if (!host) return alert('Please enter a valid domain or URL');
-
-        chrome.storage.local.get({ blocked: [] }, (res) => {
-            const list = res.blocked || [];
-            if (!list.includes(host)) {
-                list.push(host);
-                save(list);
+        const list = currentList.slice();
+        if (!list.includes(host)) {
+            list.push(host);
+            save({ blocked: list }, () => {
                 input.value = '';
                 loadAndRender();
-            } else {
-                alert('Domain already in list');
-            }
-        });
+            });
+        } else {
+            alert('Domain already in list');
+        }
     });
 
     exportBtn.addEventListener('click', () => {
-        chrome.storage.local.get({ blocked: [], locks: {} }, (res) => {
-            const payload = { blocked: res.blocked || [], locks: res.locks || {} };
-            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            const ts = new Date().toISOString().replace(/[:.]/g, '-');
-            a.href = url;
-            a.download = `siteblocker-export-${ts}.json`;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            URL.revokeObjectURL(url);
-        });
+        const payload = {
+            blocked: currentList,
+            locks: currentLocks,
+            schedules: currentSchedules,
+            timeBudgets: currentBudgets,
+            budgetUsage: currentBudgetUsage,
+            presets: currentPresets,
+            insightsSettings: currentInsightsSettings,
+            insights: currentInsights,
+            blockedExperience: currentBlockedExperience
+        };
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const ts = new Date().toISOString().replace(/[:.]/g, '-');
+        a.href = url;
+        a.download = `siteblocker-export-${ts}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
     });
 
     importBtn.addEventListener('click', () => importFile.click());
     importFile.addEventListener('change', (ev) => {
         const f = ev.target.files && ev.target.files[0];
         if (!f) return;
-
         const reader = new FileReader();
         reader.onload = () => {
             try {
                 const json = JSON.parse(reader.result);
-                const fileBlocked = Array.isArray(json.blocked) ? json.blocked.map((b) => (b || '').toString()) : [];
-                const fileLocks = (json.locks && typeof json.locks === 'object') ? json.locks : {};
+                const fileBlocked = Array.isArray(json.blocked) ? json.blocked : [];
+                const fileLocks = json.locks && typeof json.locks === 'object' ? json.locks : {};
+                const fileSchedules = Array.isArray(json.schedules) ? json.schedules.map(normalizeSchedule) : [];
+                const fileBudgets = json.timeBudgets && typeof json.timeBudgets === 'object' ? json.timeBudgets : {};
+                const filePresets = Array.isArray(json.presets) ? json.presets.map(normalizePreset) : [];
+                const fileInsightsSettings = json.insightsSettings && typeof json.insightsSettings === 'object' ? json.insightsSettings : null;
+                const fileInsights = json.insights && typeof json.insights === 'object' ? json.insights : null;
+                const fileBlockedExperience = json.blockedExperience && typeof json.blockedExperience === 'object' ? json.blockedExperience : null;
 
-                chrome.storage.local.get({ blocked: [], locks: {} }, (cur) => {
-                    const merged = new Set((cur.blocked || []).concat(fileBlocked).map(normalizeHost).filter(Boolean));
-                    const newBlocked = Array.from(merged);
-                    const newLocks = Object.assign({}, cur.locks || {}, fileLocks || {});
-                    chrome.storage.local.set({ blocked: newBlocked, locks: newLocks }, () => {
-                        loadAndRender();
-                        alert('Import successful');
-                    });
+                const mergedBlocked = Array.from(new Set(currentList.concat(fileBlocked).map(normalizeHost).filter(Boolean)));
+                const mergedLocks = Object.assign({}, currentLocks, fileLocks);
+                const mergedBudgets = Object.assign({}, currentBudgets, fileBudgets);
+
+                const schedulesById = new Map();
+                currentSchedules.forEach((s) => schedulesById.set(s.id, s));
+                fileSchedules.forEach((s) => schedulesById.set(s.id, s));
+
+                const presetsById = new Map();
+                currentPresets.forEach((p) => presetsById.set(p.id, p));
+                filePresets.forEach((p) => presetsById.set(p.id, p));
+
+                const patch = {
+                    blocked: mergedBlocked,
+                    locks: mergedLocks,
+                    schedules: Array.from(schedulesById.values()),
+                    timeBudgets: mergedBudgets,
+                    presets: Array.from(presetsById.values())
+                };
+                if (fileInsightsSettings) patch.insightsSettings = fileInsightsSettings;
+                if (fileInsights) patch.insights = fileInsights;
+                if (fileBlockedExperience) patch.blockedExperience = fileBlockedExperience;
+
+                save(patch, () => {
+                    loadAndRender();
+                    alert('Import successful');
                 });
             } catch (e) {
                 alert('Failed to parse JSON file');
             }
         };
-
         reader.readAsText(f);
         importFile.value = '';
     });
@@ -241,12 +526,63 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    addScheduleBtn.addEventListener('click', () => {
+        const name = (scheduleName.value || '').trim() || 'Schedule';
+        const hosts = parseHostsCsv(scheduleHosts.value);
+        const days = Array.from(scheduleDaysWrap.querySelectorAll('input[type=checkbox]:checked')).map((el) => Number(el.value));
+        const start = scheduleStart.value || '09:00';
+        const end = scheduleEnd.value || '17:00';
+        if (!hosts.length) return alert('Add at least one host for a schedule');
+        if (!days.length) return alert('Choose at least one weekday');
+
+        const next = currentSchedules.concat([normalizeSchedule({ id: uid('sch'), name, hosts, days, start, end, enabled: true })]);
+        save({ schedules: next }, () => {
+            scheduleName.value = '';
+            scheduleHosts.value = '';
+            scheduleDaysWrap.querySelectorAll('input[type=checkbox]').forEach((el) => { el.checked = false; });
+            loadAndRender();
+        });
+    });
+
+    saveBudgetBtn.addEventListener('click', () => {
+        const host = normalizeHost(budgetHost.value);
+        const mins = Math.max(1, Number(budgetMinutes.value) || 0);
+        if (!host) return alert('Enter a valid domain for budget');
+        const next = Object.assign({}, currentBudgets, { [host]: mins });
+        save({ timeBudgets: next }, () => {
+            budgetHost.value = '';
+            loadAndRender();
+        });
+    });
+
+    savePresetBtn.addEventListener('click', () => {
+        const name = (presetName.value || '').trim() || 'Preset';
+        const hosts = parseHostsCsv(presetHosts.value);
+        if (!hosts.length) return alert('Add at least one host to save a preset');
+        const next = currentPresets.concat([normalizePreset({ id: uid('preset'), name, hosts })]);
+        save({ presets: next }, () => {
+            presetName.value = '';
+            presetHosts.value = '';
+            loadAndRender();
+        });
+    });
+
+    insightsEnabled.addEventListener('change', () => {
+        save({ insightsSettings: { enabled: !!insightsEnabled.checked } }, loadAndRender);
+    });
+
+    toneSelect.addEventListener('change', () => {
+        save({ blockedExperience: { tone: toneSelect.value, style: styleSelect.value } });
+    });
+    styleSelect.addEventListener('change', () => {
+        save({ blockedExperience: { tone: toneSelect.value, style: styleSelect.value } });
+    });
+
     chrome.storage.onChanged.addListener((changes, area) => {
-        if (area === 'local' && (changes.blocked || changes.locks || changes.ruleError)) {
+        if (area === 'local' && (changes.blocked || changes.locks || changes.ruleError || changes.schedules || changes.timeBudgets || changes.budgetUsage || changes.presets || changes.insights || changes.insightsSettings || changes.blockedExperience)) {
             loadAndRender();
         }
     });
 
-    // Update countdown text in place to avoid list flicker.
     setInterval(updateLockCountdowns, 1000);
 });

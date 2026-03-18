@@ -30,7 +30,56 @@ function hostnameOf(u) {
 
 const host = hostnameOf(orig || '');
 const lockInfoEl = document.getElementById('lockInfo');
+const motivationEl = document.getElementById('motivation');
 let lockUntil = 0;
+
+const MESSAGES = {
+    gentle: [
+        'Take a breath. You chose focus for a reason.',
+        'A small pause now helps the rest of your day.',
+        'Return to what matters most right now.'
+    ],
+    coach: [
+        'Protect this hour. Your goals need consistency.',
+        'You are in control. Stay on the planned task.',
+        'Momentum beats distraction. Keep going.'
+    ],
+    minimal: [
+        'Blocked. Continue your focus session.',
+        'Not now. Back to your task.',
+        'Focus mode is active.'
+    ]
+};
+
+function pickMessage(tone) {
+    const list = MESSAGES[tone] || MESSAGES.gentle;
+    return list[Math.floor(Math.random() * list.length)];
+}
+
+function applyBlockedExperience() {
+    chrome.storage.local.get({ blockedExperience: { tone: 'gentle', style: 'nature' } }, (res) => {
+        const cfg = res.blockedExperience || {};
+        const tone = cfg.tone || 'gentle';
+        const style = cfg.style || 'nature';
+
+        document.body.classList.remove('theme-dawn', 'theme-ocean');
+        if (style === 'dawn') document.body.classList.add('theme-dawn');
+        if (style === 'ocean') document.body.classList.add('theme-ocean');
+
+        if (motivationEl) motivationEl.textContent = pickMessage(tone);
+    });
+}
+
+function reportBlockedAttempt() {
+    try {
+        chrome.runtime.sendMessage({ action: 'blockedAttempt', host: host || '' }, () => {
+            // no-op callback for fire-and-forget event recording
+            void chrome.runtime.lastError;
+        });
+    } catch (e) {
+        // ignore best-effort analytics event failures
+    }
+}
 
 function updateLockInfo() {
     if (!host || !lockInfoEl) return;
@@ -53,6 +102,8 @@ function refreshLockUntilFromStorage() {
 
 refreshLockUntilFromStorage();
 setInterval(updateLockInfo, 1000);
+applyBlockedExperience();
+reportBlockedAttempt();
 
 chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local' || !changes.locks || !host) return;

@@ -141,9 +141,128 @@
             font-size: 0.92em;
         }
 
+        .tabs {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin: 12px 0;
+        }
+
+        .tab-btn {
+            background: #fff;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            padding: 8px 12px;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--muted);
+            cursor: pointer;
+        }
+
+        .tab-btn.active {
+            color: #fff;
+            border-color: transparent;
+            background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+        }
+
+        .tab-panel {
+            display: none;
+        }
+
+        .tab-panel.active {
+            display: block;
+        }
+
+        .stack {
+            margin-top: 14px;
+            display: grid;
+            gap: 12px;
+        }
+
+        details.panel {
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 10px 12px;
+            background: #fcfefd;
+        }
+
+        details.panel summary {
+            cursor: pointer;
+            font-weight: 700;
+            color: var(--accent-strong);
+        }
+
+        .subtle {
+            color: var(--muted);
+            font-size: 0.92em;
+            margin: 8px 0;
+        }
+
+        .row {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-top: 8px;
+        }
+
+        input[type=number],
+        input[type=time],
+        select {
+            padding: 9px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            font-size: 13px;
+        }
+
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .metric {
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: #fff;
+            padding: 8px;
+        }
+
+        .metric .k {
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .metric .v {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--accent-strong);
+        }
+
+        .days {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 8px;
+        }
+
+        .days label {
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            padding: 5px 9px;
+            font-size: 12px;
+            background: #fff;
+            cursor: pointer;
+        }
+
         @media (max-width: 700px) {
             li {
                 grid-template-columns: 1fr;
+            }
+
+            .tabs {
+                gap: 6px;
             }
         }
     </style>
@@ -153,28 +272,133 @@
     <main class="wrap">
         <section class="card">
             <h1>SiteBlocker Settings</h1>
-            <p class="intro">Add domains to block (for example <em>youtube.com</em> or <em>reddit.com</em>).</p>
+            <p class="intro">Core actions are under <strong>Sites</strong>. Advanced features are split into focused tabs.</p>
 
-            <div class="controls">
-                <input id="domainInput" type="text" placeholder="example.com" />
-                <button id="addBtn" class="primary">Add Site</button>
-                <button id="exportBtn">Export</button>
-                <button id="importBtn">Import</button>
-                <input id="importFile" type="file" accept="application/json" style="display:none" />
+            <div class="tabs" role="tablist" aria-label="Settings sections">
+                <button class="tab-btn active" data-tab="sites" role="tab" aria-selected="true">Sites</button>
+                <button class="tab-btn" data-tab="insights" role="tab" aria-selected="false">Insights</button>
+                <button class="tab-btn" data-tab="sessions" role="tab" aria-selected="false">Sessions</button>
+                <button class="tab-btn" data-tab="schedule" role="tab" aria-selected="false">Weekly Schedule</button>
+                <button class="tab-btn" data-tab="appearance" role="tab" aria-selected="false">Appearance</button>
             </div>
 
-            <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px;">
-                <div id="ruleCount" style="color:var(--muted);font-weight:700"></div>
-                <div id="ruleError" style="color:var(--danger);font-weight:700;display:none"></div>
+            <div id="tab-sites" class="tab-panel active" role="tabpanel">
+                <div class="controls">
+                    <input id="domainInput" type="text" placeholder="example.com" />
+                    <button id="addBtn" class="primary">Add Site</button>
+                    <button id="exportBtn">Export</button>
+                    <button id="importBtn">Import</button>
+                    <input id="importFile" type="file" accept="application/json" style="display:none" />
+                </div>
+
+                <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px;">
+                    <div id="ruleCount" style="color:var(--muted);font-weight:700"></div>
+                    <div id="ruleError" style="color:var(--danger);font-weight:700;display:none"></div>
+                </div>
+                <h2>Blocked Sites</h2>
+                <ul id="list"></ul>
+
+                <p class="tip">Tip: use "Lock" to hard-lock a site for a number of minutes.</p>
+
+                <div class="feedback">
+                    <button id="feedbackBtn">Submit Feedback / Feature Request</button>
+                    <p class="feedback-note">Opens GitHub Issues.</p>
+                </div>
             </div>
-            <h2>Blocked Sites</h2>
-            <ul id="list"></ul>
 
-            <p class="tip">Tip: use "Lock" to hard-lock a site for a number of minutes.</p>
+            <div id="tab-insights" class="tab-panel" role="tabpanel">
+                <h2>Insights</h2>
+                <p class="subtle">Local-only stats. No server tracking.</p>
+                <label class="row">
+                    <input id="insightsEnabled" type="checkbox" checked />
+                    Enable insights tracking
+                </label>
+                <div class="metrics">
+                    <div class="metric">
+                        <div class="k">Today blocked attempts</div>
+                        <div id="todayBlocked" class="v">0</div>
+                    </div>
+                    <div class="metric">
+                        <div class="k">Today focus minutes</div>
+                        <div id="todayFocus" class="v">0</div>
+                    </div>
+                    <div class="metric">
+                        <div class="k">7-day blocked attempts</div>
+                        <div id="weekBlocked" class="v">0</div>
+                    </div>
+                    <div class="metric">
+                        <div class="k">7-day focus minutes</div>
+                        <div id="weekFocus" class="v">0</div>
+                    </div>
+                </div>
+            </div>
 
-            <div class="feedback">
-                <button id="feedbackBtn">Submit Feedback / Feature Request</button>
-                <p class="feedback-note">Opens GitHub Issues.</p>
+            <div id="tab-sessions" class="tab-panel" role="tabpanel">
+                <h2>Sessions</h2>
+                <p class="subtle">Presets and daily time budgets.</p>
+                <div class="panel" style="margin-bottom:10px">
+                    <p class="subtle">Time Budgets: allow a site for X minutes/day, then auto-lock it.</p>
+                    <div class="row">
+                        <input id="budgetHost" type="text" placeholder="twitter.com" />
+                        <input id="budgetMinutes" type="number" min="1" max="720" value="15" />
+                        <button id="saveBudgetBtn">Save Budget</button>
+                    </div>
+                    <ul id="budgetsList"></ul>
+                </div>
+                <div class="panel">
+                    <p class="subtle">Session Presets: save host bundles and apply in one click.</p>
+                    <div class="row">
+                        <input id="presetName" type="text" placeholder="Deep Work" />
+                        <input id="presetHosts" type="text" placeholder="youtube.com, instagram.com" />
+                        <button id="savePresetBtn">Save Preset</button>
+                    </div>
+                    <ul id="presetsList"></ul>
+                </div>
+            </div>
+
+            <div id="tab-schedule" class="tab-panel" role="tabpanel">
+                <h2>Weekly Schedule</h2>
+                <p class="subtle">Set and forget automatic lock windows.</p>
+                <div class="row">
+                    <input id="scheduleName" type="text" placeholder="Study Morning" />
+                    <input id="scheduleHosts" type="text" placeholder="youtube.com, reddit.com" />
+                </div>
+                <div class="days" id="scheduleDays">
+                    <label><input type="checkbox" value="1" /> Mon</label>
+                    <label><input type="checkbox" value="2" /> Tue</label>
+                    <label><input type="checkbox" value="3" /> Wed</label>
+                    <label><input type="checkbox" value="4" /> Thu</label>
+                    <label><input type="checkbox" value="5" /> Fri</label>
+                    <label><input type="checkbox" value="6" /> Sat</label>
+                    <label><input type="checkbox" value="0" /> Sun</label>
+                </div>
+                <div class="row">
+                    <label>Start <input id="scheduleStart" type="time" value="09:00" /></label>
+                    <label>End <input id="scheduleEnd" type="time" value="17:00" /></label>
+                    <button id="addScheduleBtn">Add Schedule</button>
+                </div>
+                <ul id="schedulesList"></ul>
+            </div>
+
+            <div id="tab-appearance" class="tab-panel" role="tabpanel">
+                <h2>Appearance</h2>
+                <p class="subtle">Customize motivational tone and visual style on the blocked page.</p>
+                <div class="row">
+                    <label>Tone
+                        <select id="toneSelect">
+                            <option value="gentle">Gentle</option>
+                            <option value="coach">Coach</option>
+                            <option value="minimal">Minimal</option>
+                        </select>
+                    </label>
+                    <label>Style
+                        <select id="styleSelect">
+                            <option value="nature">Nature</option>
+                            <option value="dawn">Dawn</option>
+                            <option value="ocean">Ocean</option>
+                        </select>
+                    </label>
+                </div>
             </div>
         </section>
     </main>

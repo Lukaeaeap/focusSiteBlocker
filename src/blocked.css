@@ -13,6 +13,18 @@ body {
     background-position: center;
 }
 
+body.theme-dawn {
+    background-image:
+        linear-gradient(160deg, rgba(255, 244, 224, 0.25), rgba(251, 227, 204, 0.18)),
+        url('./assets/focus-landscape.svg');
+}
+
+body.theme-ocean {
+    background-image:
+        linear-gradient(160deg, rgba(220, 242, 250, 0.25), rgba(191, 227, 245, 0.18)),
+        url('./assets/focus-landscape.svg');
+}
+
 .center {
     text-align: center;
     padding: 34px 30px;
@@ -70,6 +82,7 @@ h1 {
 .subtitle {
     color: #345a4e;
     margin-bottom: 6px;
+    font-size: 1.03rem;
 }
 
 #lockInfo {

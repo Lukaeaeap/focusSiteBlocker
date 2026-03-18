@@ -2,6 +2,23 @@ importScripts('lib.js');
 
 let blockedHosts = [];
 let locks = {}; // { host: lockedUntilTimestamp }
+let schedules = []; // [{ id, name, hosts[], days[], start, end, enabled }]
+let timeBudgets = {}; // { host: minutesPerDay }
+let budgetUsage = { day: '', usage: {} }; // { day: YYYY-MM-DD, usage: { host: usedMinutes } }
+let insightsSettings = { enabled: true };
+let insights = { days: {} }; // { days: { YYYY-MM-DD: { blockedAttempts, focusMinutes } } }
+let activeTabHost = '';
+
+function normalizeTimeBudgets(raw) {
+    const out = {};
+    Object.entries(raw || {}).forEach(([host, mins]) => {
+        const nh = normalizeHost(host);
+        const cap = Math.max(0, Number(mins) || 0);
+        if (!nh || cap <= 0) return;
+        out[nh] = cap;
+    });
+    return out;
+}
 
 // track last pushed rule ids for this extension
 let lastRuleIds = [];
@@ -21,6 +38,22 @@ function loadLocks() {
     });
 }
 
+function loadAutomationState() {
+    chrome.storage.local.get({
+        schedules: [],
+        timeBudgets: {},
+        budgetUsage: { day: '', usage: {} },
+        insightsSettings: { enabled: true },
+        insights: { days: {} }
+    }, (res) => {
+        schedules = Array.isArray(res.schedules) ? res.schedules : [];
+        timeBudgets = normalizeTimeBudgets(res.timeBudgets || {});
+        budgetUsage = res.budgetUsage || { day: '', usage: {} };
+        insightsSettings = res.insightsSettings || { enabled: true };
+        insights = res.insights || { days: {} };
+    });
+}
+
 chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && changes.blocked) {
         blockedHosts = changes.blocked.newValue || [];
@@ -30,7 +63,150 @@ chrome.storage.onChanged.addListener((changes, area) => {
         locks = changes.locks.newValue || {};
         updateRules();
     }
+    if (area === 'local' && changes.schedules) {
+        schedules = changes.schedules.newValue || [];
+    }
+    if (area === 'local' && changes.timeBudgets) {
+        timeBudgets = normalizeTimeBudgets(changes.timeBudgets.newValue || {});
+    }
+    if (area === 'local' && changes.budgetUsage) {
+        budgetUsage = changes.budgetUsage.newValue || { day: '', usage: {} };
+    }
+    if (area === 'local' && changes.insightsSettings) {
+        insightsSettings = changes.insightsSettings.newValue || { enabled: true };
+    }
+    if (area === 'local' && changes.insights) {
+        insights = changes.insights.newValue || { days: {} };
+    }
 });
+
+function endOfDayTs(ms = Date.now()) {
+    const d = new Date(ms);
+    d.setHours(23, 59, 59, 999);
+    return d.getTime();
+}
+
+function normalizeSchedule(raw) {
+    const hosts = Array.isArray(raw && raw.hosts) ? raw.hosts.map((h) => normalizeHost(h)).filter(Boolean) : [];
+    const days = Array.isArray(raw && raw.days) ? raw.days.map((d) => Number(d)).filter((d) => d >= 0 && d <= 6) : [];
+    return {
+        id: raw && raw.id ? String(raw.id) : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        name: (raw && raw.name ? String(raw.name) : 'Schedule').trim(),
+        hosts,
+        days,
+        start: raw && raw.start ? String(raw.start) : '09:00',
+        end: raw && raw.end ? String(raw.end) : '17:00',
+        enabled: raw && raw.enabled !== false
+    };
+}
+
+function cleanExpiredLocksInMemory(now = Date.now()) {
+    let changed = false;
+    for (const [h, until] of Object.entries(locks || {})) {
+        if (until && now >= until) {
+            delete locks[h];
+            changed = true;
+        }
+    }
+    return changed;
+}
+
+function ensureBudgetDay(now = Date.now()) {
+    const day = getLocalDateKey(now);
+    if (!budgetUsage || budgetUsage.day !== day) {
+        budgetUsage = { day, usage: {} };
+        return true;
+    }
+    if (!budgetUsage.usage || typeof budgetUsage.usage !== 'object') {
+        budgetUsage.usage = {};
+        return true;
+    }
+    return false;
+}
+
+function recordInsights(delta, now = Date.now()) {
+    if (!insightsSettings || insightsSettings.enabled === false) return false;
+    const day = getLocalDateKey(now);
+    if (!insights || !insights.days || typeof insights.days !== 'object') {
+        insights = { days: {} };
+    }
+    if (!insights.days[day]) {
+        insights.days[day] = { blockedAttempts: 0, focusMinutes: 0 };
+    }
+    insights.days[day].blockedAttempts += Number(delta.blockedAttempts || 0);
+    insights.days[day].focusMinutes += Number(delta.focusMinutes || 0);
+
+    // keep recent 35 days only
+    const keys = Object.keys(insights.days).sort();
+    if (keys.length > 35) {
+        keys.slice(0, keys.length - 35).forEach((k) => delete insights.days[k]);
+    }
+    return true;
+}
+
+function applySchedulesAndBudgets(now = Date.now()) {
+    let locksChanged = false;
+    let budgetChanged = false;
+    let insightsChanged = false;
+
+    // Schedule enforcement: keep extending active schedule locks slightly beyond tick boundary.
+    const schedulesNow = (schedules || []).map(normalizeSchedule);
+    for (const schedule of schedulesNow) {
+        if (!schedule.enabled || !Array.isArray(schedule.hosts) || schedule.hosts.length === 0) continue;
+        if (typeof isScheduleActiveAt === 'function' && !isScheduleActiveAt(schedule, now)) continue;
+        const scheduleUntil = now + (95 * 1000);
+        for (const host of schedule.hosts) {
+            const existing = Number(locks[host]) || 0;
+            if (scheduleUntil > existing) {
+                locks[host] = scheduleUntil;
+                locksChanged = true;
+            }
+        }
+    }
+
+    // Daily budget: if user spends X minutes/day on host, lock for rest of day.
+    if (ensureBudgetDay(now)) budgetChanged = true;
+    const budgetHost = normalizeHost(activeTabHost || '');
+    if (budgetHost && timeBudgets && Object.prototype.hasOwnProperty.call(timeBudgets, budgetHost)) {
+        const cap = Math.max(0, Number(timeBudgets[budgetHost]) || 0);
+        if (cap > 0) {
+            const used = Number(budgetUsage.usage[budgetHost] || 0) + 1;
+            budgetUsage.usage[budgetHost] = used;
+            budgetChanged = true;
+            if (used >= cap) {
+                const lockUntil = endOfDayTs(now);
+                const existing = Number(locks[budgetHost]) || 0;
+                if (lockUntil > existing) {
+                    locks[budgetHost] = lockUntil;
+                    locksChanged = true;
+                }
+            }
+        }
+    }
+
+    const hasActiveLocks = Object.values(locks || {}).some((until) => Number(until) > now);
+    if (hasActiveLocks) {
+        if (recordInsights({ focusMinutes: 1 }, now)) insightsChanged = true;
+    }
+
+    if (cleanExpiredLocksInMemory(now)) locksChanged = true;
+
+    if (locksChanged) chrome.storage.local.set({ locks });
+    if (budgetChanged) chrome.storage.local.set({ budgetUsage });
+    if (insightsChanged) chrome.storage.local.set({ insights });
+}
+
+function refreshActiveTabHost() {
+    try {
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            const t = tabs && tabs[0];
+            const url = t && t.url ? t.url : '';
+            activeTabHost = normalizeHost(url || '');
+        });
+    } catch (e) {
+        activeTabHost = '';
+    }
+}
 
 function getActiveHosts() {
     const now = Date.now();
@@ -117,20 +293,29 @@ function updateRules() {
     }
 }
 
-// Clean expired locks periodically
-setInterval(() => {
-    const now = Date.now();
-    let changed = false;
-    for (const [h, until] of Object.entries(locks)) {
-        if (until && now >= until) {
-            delete locks[h];
-            changed = true;
-        }
-    }
-    if (changed) {
-        chrome.storage.local.set({ locks });
-    }
-}, 30 * 1000);
+try {
+    chrome.alarms.create('automationTick', { periodInMinutes: 1 });
+    chrome.alarms.onAlarm.addListener((alarm) => {
+        if (!alarm || alarm.name !== 'automationTick') return;
+        refreshActiveTabHost();
+        applySchedulesAndBudgets(Date.now());
+    });
+} catch (e) {
+    console.warn('SiteBlocker: alarms unavailable, falling back to interval tick', e);
+    setInterval(() => {
+        refreshActiveTabHost();
+        applySchedulesAndBudgets(Date.now());
+    }, 60 * 1000);
+}
+
+if (chrome.tabs && chrome.tabs.onActivated) {
+    chrome.tabs.onActivated.addListener(() => refreshActiveTabHost());
+}
+if (chrome.tabs && chrome.tabs.onUpdated) {
+    chrome.tabs.onUpdated.addListener((_tabId, changeInfo) => {
+        if (changeInfo && changeInfo.status === 'complete') refreshActiveTabHost();
+    });
+}
 
 // API: start/stop a lock for a host for N minutes
 chrome.runtime.onMessage.addListener((msg, sender, cb) => {
@@ -164,6 +349,15 @@ chrome.runtime.onMessage.addListener((msg, sender, cb) => {
         }
         console.debug('SiteBlocker: stopLock failed, not locked', host);
         cb({ success: false, error: 'not locked' });
+        return;
+    }
+    if (msg.action === 'blockedAttempt') {
+        if (recordInsights({ blockedAttempts: 1 }, Date.now())) {
+            chrome.storage.local.set({ insights }, () => cb({ success: true }));
+            return true;
+        }
+        cb({ success: true });
+        return;
     }
 });
 
@@ -173,11 +367,17 @@ console.debug('SiteBlocker: background worker started');
 chrome.runtime.onInstalled.addListener(() => {
     loadBlockedHosts();
     loadLocks();
+    loadAutomationState();
+    refreshActiveTabHost();
+    applySchedulesAndBudgets(Date.now());
 });
 
 // initial load
 loadBlockedHosts();
 loadLocks();
+loadAutomationState();
+refreshActiveTabHost();
+applySchedulesAndBudgets(Date.now());
 
 // Fallback: when navigation errors occur (for example the browser shows
 // chrome-error://chromewebdata after a blocked navigation), open the blocked
