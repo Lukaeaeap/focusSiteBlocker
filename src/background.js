@@ -7,6 +7,7 @@ let timeBudgets = {}; // { host: minutesPerDay }
 let budgetUsage = { day: '', usage: {} }; // { day: YYYY-MM-DD, usage: { host: usedMinutes } }
 let insightsSettings = { enabled: true };
 let insights = { days: {} }; // { days: { YYYY-MM-DD: { blockedAttempts, focusMinutes } } }
+let insightsMeta = { lastUpdated: 0 };
 let activeTabHost = '';
 
 function normalizeTimeBudgets(raw) {
@@ -44,13 +45,15 @@ function loadAutomationState() {
         timeBudgets: {},
         budgetUsage: { day: '', usage: {} },
         insightsSettings: { enabled: true },
-        insights: { days: {} }
+        insights: { days: {} },
+        insightsMeta: { lastUpdated: 0 }
     }, (res) => {
         schedules = Array.isArray(res.schedules) ? res.schedules : [];
         timeBudgets = normalizeTimeBudgets(res.timeBudgets || {});
         budgetUsage = res.budgetUsage || { day: '', usage: {} };
         insightsSettings = res.insightsSettings || { enabled: true };
         insights = res.insights || { days: {} };
+        insightsMeta = res.insightsMeta || { lastUpdated: 0 };
     });
 }
 
@@ -77,6 +80,9 @@ chrome.storage.onChanged.addListener((changes, area) => {
     }
     if (area === 'local' && changes.insights) {
         insights = changes.insights.newValue || { days: {} };
+    }
+    if (area === 'local' && changes.insightsMeta) {
+        insightsMeta = changes.insightsMeta.newValue || { lastUpdated: 0 };
     }
 });
 
@@ -135,6 +141,7 @@ function recordInsights(delta, now = Date.now()) {
     }
     insights.days[day].blockedAttempts += Number(delta.blockedAttempts || 0);
     insights.days[day].focusMinutes += Number(delta.focusMinutes || 0);
+    insightsMeta = { lastUpdated: now };
 
     // keep recent 35 days only
     const keys = Object.keys(insights.days).sort();
@@ -193,7 +200,7 @@ function applySchedulesAndBudgets(now = Date.now()) {
 
     if (locksChanged) chrome.storage.local.set({ locks });
     if (budgetChanged) chrome.storage.local.set({ budgetUsage });
-    if (insightsChanged) chrome.storage.local.set({ insights });
+    if (insightsChanged) chrome.storage.local.set({ insights, insightsMeta });
 }
 
 function refreshActiveTabHost() {
@@ -353,7 +360,7 @@ chrome.runtime.onMessage.addListener((msg, sender, cb) => {
     }
     if (msg.action === 'blockedAttempt') {
         if (recordInsights({ blockedAttempts: 1 }, Date.now())) {
-            chrome.storage.local.set({ insights }, () => cb({ success: true }));
+            chrome.storage.local.set({ insights, insightsMeta }, () => cb({ success: true }));
             return true;
         }
         cb({ success: true });

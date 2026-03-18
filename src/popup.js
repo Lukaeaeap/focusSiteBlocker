@@ -36,6 +36,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const unlockBtn = document.getElementById('unlockBtn');
     const optionsBtn = document.getElementById('optionsBtn');
     const statusEl = document.getElementById('status');
+    const budgetInfoEl = document.getElementById('budgetInfo');
 
     const host = await getActiveHost();
     if (!host) {
@@ -49,9 +50,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     hostEl.textContent = host;
 
     function updateState() {
-        chrome.storage.local.get({ blocked: [], locks: {} }, (res) => {
+        chrome.storage.local.get({ blocked: [], locks: {}, timeBudgets: {}, budgetUsage: { day: '', usage: {} } }, (res) => {
             const blocked = res.blocked || [];
             const locks = res.locks || {};
+            const budgets = res.timeBudgets || {};
+            const budgetUsage = res.budgetUsage || { day: '', usage: {} };
             const isBlocked = blocked.includes(host);
             const until = locks[host];
             const now = Date.now();
@@ -73,6 +76,19 @@ document.addEventListener('DOMContentLoaded', async () => {
             } else {
                 statusEl.textContent = '';
                 lockBtn.textContent = 'Lock 5m';
+            }
+
+            if (budgetInfoEl) {
+                const day = getLocalDateKey(Date.now());
+                const cap = Math.max(0, Number(budgets[host]) || 0);
+                const usedMap = budgetUsage.day === day ? (budgetUsage.usage || {}) : {};
+                const used = Math.max(0, Number(usedMap[host]) || 0);
+                if (cap > 0) {
+                    const left = Math.max(0, cap - used);
+                    budgetInfoEl.textContent = `Budget left today: ${left}m (${used}/${cap} used)`;
+                } else {
+                    budgetInfoEl.textContent = '';
+                }
             }
         });
     }

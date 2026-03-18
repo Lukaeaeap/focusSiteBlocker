@@ -10,6 +10,7 @@ let currentBudgetUsage = { day: '', usage: {} };
 let currentPresets = [];
 let currentInsightsSettings = { enabled: true };
 let currentInsights = { days: {} };
+let currentInsightsMeta = { lastUpdated: 0 };
 let currentBlockedExperience = { tone: 'gentle', style: 'nature' };
 const lockLabelByHost = new Map();
 
@@ -353,6 +354,24 @@ function renderInsights() {
 
     const toggle = document.getElementById('insightsEnabled');
     if (toggle) toggle.checked = !(currentInsightsSettings && currentInsightsSettings.enabled === false);
+
+    refreshInsightsUpdatedLabel();
+}
+
+function refreshInsightsUpdatedLabel() {
+    const el = document.getElementById('insightsUpdated');
+    if (!el) return;
+    if (currentInsightsSettings && currentInsightsSettings.enabled === false) {
+        el.textContent = 'Last updated: tracking is off';
+        return;
+    }
+    const ts = Number(currentInsightsMeta.lastUpdated || 0);
+    if (!ts) {
+        el.textContent = 'Last updated: no events yet';
+        return;
+    }
+    const sec = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+    el.textContent = `Last updated: ${sec}s ago`;
 }
 
 function renderBlockedExperience() {
@@ -373,6 +392,7 @@ function loadAndRender() {
         presets: [],
         insightsSettings: { enabled: true },
         insights: { days: {} },
+        insightsMeta: { lastUpdated: 0 },
         blockedExperience: { tone: 'gentle', style: 'nature' }
     }, (res) => {
         currentList = (res.blocked || []).slice();
@@ -383,6 +403,7 @@ function loadAndRender() {
         currentPresets = (res.presets || []).map(normalizePreset);
         currentInsightsSettings = res.insightsSettings || { enabled: true };
         currentInsights = res.insights || { days: {} };
+        currentInsightsMeta = res.insightsMeta || { lastUpdated: 0 };
         currentBlockedExperience = res.blockedExperience || { tone: 'gentle', style: 'nature' };
 
         renderRuleStatus(currentList, currentLocks, res.ruleError || '');
@@ -579,10 +600,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     chrome.storage.onChanged.addListener((changes, area) => {
-        if (area === 'local' && (changes.blocked || changes.locks || changes.ruleError || changes.schedules || changes.timeBudgets || changes.budgetUsage || changes.presets || changes.insights || changes.insightsSettings || changes.blockedExperience)) {
+        if (area === 'local' && (changes.blocked || changes.locks || changes.ruleError || changes.schedules || changes.timeBudgets || changes.budgetUsage || changes.presets || changes.insights || changes.insightsMeta || changes.insightsSettings || changes.blockedExperience)) {
             loadAndRender();
         }
     });
 
     setInterval(updateLockCountdowns, 1000);
+    setInterval(refreshInsightsUpdatedLabel, 1000);
 });

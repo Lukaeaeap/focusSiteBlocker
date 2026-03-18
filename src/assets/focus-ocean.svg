@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" role="img" aria-label="Calm ocean horizon">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#71b9de"/>
+      <stop offset="60%" stop-color="#9dd5e9"/>
+      <stop offset="100%" stop-color="#c6e8f0"/>
+    </linearGradient>
+    <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#5da9c8"/>
+      <stop offset="100%" stop-color="#2f6e8f"/>
+    </linearGradient>
+    <linearGradient id="wave" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#8fd0e7" stop-opacity="0.75"/>
+      <stop offset="100%" stop-color="#b7e4f3" stop-opacity="0.45"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="1000" fill="url(#sky)"/>
+  <rect y="560" width="1600" height="440" fill="url(#sea)"/>
+  <path d="M0 615 C180 595 360 635 540 615 C760 590 940 640 1160 615 C1320 600 1450 620 1600 610 L1600 660 L0 660 Z" fill="url(#wave)"/>
+  <path d="M0 700 C200 670 390 730 610 700 C850 665 1030 735 1260 700 C1400 680 1510 705 1600 695 L1600 740 L0 740 Z" fill="url(#wave)"/>
+  <path d="M0 790 C210 760 430 820 670 790 C890 760 1110 820 1360 790 C1460 778 1530 790 1600 786 L1600 840 L0 840 Z" fill="url(#wave)"/>
+</svg>
