@@ -5,8 +5,8 @@
     "description": "Blocks configured websites and redirects to a focus page.",
     "permissions": [
         "storage",
-        "webRequest",
-        "webRequestBlocking"
+        "declarativeNetRequest",
+        "tabs"
     ],
     "host_permissions": [
         "<all_urls>"
@@ -16,7 +16,8 @@
     },
     "options_page": "src/options.html",
     "action": {
-        "default_title": "SiteBlocker"
+        "default_title": "SiteBlocker",
+        "default_popup": "src/popup.html"
     },
     "icons": {
         "16": "icons/icon16.svg",

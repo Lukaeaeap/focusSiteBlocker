@@ -1,0 +1,40 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <title>SiteBlocker</title>
+    <style>
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            min-width: 220px;
+            padding: 12px
+        }
+
+        button {
+            padding: 8px 10px;
+            margin-top: 8px;
+            width: 100%
+        }
+
+        .host {
+            font-weight: 600;
+            margin-bottom: 8px
+        }
+    </style>
+</head>
+
+<body>
+    <div>
+        <div id="host" class="host">Detecting...</div>
+        <button id="blockBtn">Block this site</button>
+        <button id="unblockBtn">Unblock this site</button>
+        <button id="lockBtn">Lock 5 minutes</button>
+        <button id="unlockBtn">Stop lock</button>
+        <button id="optionsBtn">Open Options</button>
+        <div id="msg" style="margin-top:8px;color:green"></div>
+    </div>
+    <script src="popup.js"></script>
+</body>
+
+</html>

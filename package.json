@@ -1,0 +1,14 @@
+{
+    "name": "siteblocker",
+    "version": "0.1.0",
+    "description": "Brave/Chromium site blocker extension - test harness",
+    "scripts": {
+        "test": "jest --color"
+    },
+    "devDependencies": {
+        "jest": "^29.0.0"
+    },
+    "jest": {
+        "testEnvironment": "node"
+    }
+}
