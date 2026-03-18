@@ -1,0 +1,54 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <title>SiteBlocker — Options</title>
+    <style>
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            max-width: 800px;
+            margin: 20px
+        }
+
+        input[type=text] {
+            width: 320px;
+            padding: 6px
+        }
+
+        button {
+            padding: 6px 10px
+        }
+
+        ul {
+            padding-left: 20px
+        }
+
+        li {
+            margin: 6px 0
+        }
+
+        .host {
+            font-weight: 600
+        }
+
+        .remove {
+            margin-left: 8px;
+            color: #c00
+        }
+    </style>
+</head>
+
+<body>
+    <h1>SiteBlocker — Options</h1>
+    <p>Add domains to block (example: <em>youtube.com</em>, <em>reddit.com</em>).</p>
+    <input id="domainInput" type="text" placeholder="example.com" />
+    <button id="addBtn">Add</button>
+
+    <h2>Blocked sites</h2>
+    <ul id="list"></ul>
+
+    <script src="src/options.js"></script>
+</body>
+
+</html>

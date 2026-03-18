@@ -1,0 +1,26 @@
+{
+    "manifest_version": 3,
+    "name": "SiteBlocker (Brave)",
+    "version": "0.1.0",
+    "description": "Blocks configured websites and redirects to a focus page.",
+    "permissions": [
+        "storage",
+        "webRequest",
+        "webRequestBlocking"
+    ],
+    "host_permissions": [
+        "<all_urls>"
+    ],
+    "background": {
+        "service_worker": "src/background.js"
+    },
+    "options_page": "src/options.html",
+    "action": {
+        "default_title": "SiteBlocker"
+    },
+    "icons": {
+        "16": "icons/icon16.svg",
+        "48": "icons/icon48.svg",
+        "128": "icons/icon128.svg"
+    }
+}
