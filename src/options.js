@@ -78,6 +78,12 @@ function render(list) {
                 if (locks[host] && Date.now() < locks[host]) {
                     return alert('This site is currently locked and cannot be removed');
                 }
+                // require typing the host to confirm removal to avoid accidental deletes
+                const confirmText = prompt(`Type the domain to confirm removal:\n${host}`);
+                if (!confirmText) return;
+                if (confirmText.trim().toLowerCase() !== host.toLowerCase()) {
+                    return alert('Confirmation did not match. Removal cancelled.');
+                }
                 list.splice(idx, 1);
                 save(list);
                 render(list);

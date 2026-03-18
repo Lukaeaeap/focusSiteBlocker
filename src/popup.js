@@ -25,6 +25,17 @@ async function getActiveHost() {
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
             if (!tabs || !tabs[0]) return resolve('');
             const url = tabs[0].url || '';
+            // If the active tab is the extension's blocked page, it carries the original target
+            // in the `url` query parameter; prefer that host instead of the extension id.
+            try {
+                const u = new URL(url);
+                if ((u.protocol === 'chrome-extension:' || u.protocol === 'moz-extension:') && u.pathname.includes('blocked.html')) {
+                    const orig = u.searchParams.get('url') || '';
+                    if (orig) return resolve(normalizeHost(orig));
+                }
+            } catch (e) {
+                // fall through to normal normalization
+            }
             resolve(normalizeHost(url));
         });
     });

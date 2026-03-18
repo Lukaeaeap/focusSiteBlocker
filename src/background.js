@@ -40,10 +40,17 @@ function getActiveHosts() {
 
 function makeRule(id, host) {
     const safeHost = (host || '').replace(/^\.+|\.+$/g, '');
+    // Build a full extension URL including the original host as a query param.
+    // Using a full `chrome-extension://...` redirect URL prevents the browser's
+    // generic "ERR_BLOCKED_BY_CLIENT" interstitial from showing the raw
+    // extension id string; instead the extension page loads and can display
+    // a friendly message.
+    const redirectBase = chrome.runtime.getURL('src/blocked.html');
+    const redirectUrl = `${redirectBase}?url=${encodeURIComponent('https://' + safeHost)}`;
     return {
         id,
         priority: 1,
-        action: { type: 'redirect', redirect: { extensionPath: '/src/blocked.html' } },
+        action: { type: 'redirect', redirect: { url: redirectUrl } },
         condition: {
             // Domain and subdomain match in DNR format.
             // Example: ||youtube.com^ matches youtube.com and www.youtube.com.
