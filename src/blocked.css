@@ -1,38 +1,44 @@
 body {
-    font-family: Arial, Helvetica, sans-serif;
-    color: #222;
-    height: 100vh;
+    font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+    color: #173028;
+    min-height: 100vh;
     margin: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    /* peaceful nature background from Unsplash */
-    background-image: url('https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1600&q=80&ixlib=rb-4.0.3&s=');
+    background-image:
+        linear-gradient(160deg, rgba(244, 254, 250, 0.2), rgba(222, 238, 251, 0.2)),
+        url('./assets/focus-landscape.svg');
     background-size: cover;
     background-position: center;
 }
 
 .center {
     text-align: center;
-    padding: 32px 28px;
-    background: rgba(255, 255, 255, 0.92);
-    border-radius: 12px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+    padding: 34px 30px;
+    background: rgba(250, 255, 252, 0.92);
+    border-radius: 18px;
+    border: 1px solid rgba(40, 109, 79, 0.14);
+    box-shadow: 0 14px 44px rgba(19, 62, 44, 0.2);
     max-width: 760px;
 }
 
 h1 {
-    margin: 0 0 8px
+    margin: 0 0 8px;
+    font-size: 2rem;
+    color: #1f6148;
 }
 
 #home {
     display: inline-block;
-    margin-top: 12px;
-    padding: 8px 14px;
-    background: #0b63d8;
+    margin-top: 10px;
+    padding: 10px 16px;
+    background: linear-gradient(135deg, #2e8263, #286f94);
     color: #fff;
-    border-radius: 6px;
+    border-radius: 10px;
     text-decoration: none;
+    font-weight: 700;
+    letter-spacing: 0.01em;
 }
 
 .open-settings {
@@ -40,7 +46,7 @@ h1 {
     left: 50%;
     transform: translateX(-50%);
     bottom: 28px;
-    background: linear-gradient(135deg, #2b8a6f, #196f54);
+    background: linear-gradient(135deg, #2f8e71, #2a6f9a);
     color: #fff;
     border: none;
     padding: 12px 20px;
@@ -56,12 +62,28 @@ h1 {
 }
 
 #orig {
-    font-size: 0.95em;
-    color: #444;
+    font-size: 0.98em;
+    color: #2f4f44;
     margin-top: 8px;
 }
 
 .subtitle {
-    color: #444;
-    margin-bottom: 6px
+    color: #345a4e;
+    margin-bottom: 6px;
+}
+
+#lockInfo {
+    color: #295648;
+    font-weight: 600;
+}
+
+@media (max-width: 560px) {
+    .center {
+        margin: 0 14px;
+        padding: 24px 20px;
+    }
+
+    h1 {
+        font-size: 1.7rem;
+    }
 }

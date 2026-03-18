@@ -1,4 +1,4 @@
-const { normalizeHost, stableId } = require('../src/lib');
+const { normalizeHost, stableId, formatCompactDuration } = require('../src/lib');
 
 describe('lib utilities', () => {
     test('normalizeHost works with urls and hosts', () => {
@@ -14,5 +14,12 @@ describe('lib utilities', () => {
         expect(a).toBeGreaterThan(0);
         expect(a).toBe(b);
         expect(a).not.toBe(c);
+    });
+
+    test('formatCompactDuration uses highest unit only', () => {
+        expect(formatCompactDuration(19)).toBe('19s');
+        expect(formatCompactDuration(301)).toBe('5m');
+        expect(formatCompactDuration(5 * 3600 + 59)).toBe('5h');
+        expect(formatCompactDuration(2 * 86400 + 3600)).toBe('2d');
     });
 });

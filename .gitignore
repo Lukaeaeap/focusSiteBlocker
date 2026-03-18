@@ -10,6 +10,7 @@ yarn-error.log*
 # Test and coverage output
 coverage/
 .nyc_output/
+dist/
 
 # Environment files
 .env
@@ -20,3 +21,6 @@ coverage/
 Thumbs.db
 .vscode/
 .idea/
+
+# Private planning docs (must never be pushed)
+plans/

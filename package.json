@@ -1,9 +1,13 @@
 {
     "name": "siteblocker",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "description": "Brave/Chromium site blocker extension - test harness",
     "scripts": {
-        "test": "jest --color"
+        "test": "jest --color",
+        "validate:release": "node scripts/validate-release.js",
+        "check": "npm run test && npm run validate:release",
+        "prepare:release": "node scripts/prepare-release.js",
+        "package:release": "node scripts/prepare-release.js --zip"
     },
     "devDependencies": {
         "jest": "^29.0.0"

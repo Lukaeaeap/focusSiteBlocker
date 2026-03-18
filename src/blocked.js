@@ -30,25 +30,36 @@ function hostnameOf(u) {
 
 const host = hostnameOf(orig || '');
 const lockInfoEl = document.getElementById('lockInfo');
+let lockUntil = 0;
 
 function updateLockInfo() {
+    if (!host || !lockInfoEl) return;
+    if (lockUntil && Date.now() < lockUntil) {
+        const remain = Math.max(0, Math.ceil((lockUntil - Date.now()) / 1000));
+        lockInfoEl.textContent = `Locked for ${formatCompactDuration(remain)} more.`;
+    } else {
+        lockInfoEl.textContent = '';
+    }
+}
+
+function refreshLockUntilFromStorage() {
     if (!host) return;
     chrome.storage.local.get({ locks: {} }, (res) => {
         const locks = res.locks || {};
-        const until = locks[host];
-        if (until && Date.now() < until) {
-            const remain = Math.max(0, Math.ceil((until - Date.now()) / 1000));
-            const m = Math.floor(remain / 60);
-            const s = remain % 60;
-            lockInfoEl.textContent = `Locked for ${m}m ${s}s more.`;
-        } else {
-            lockInfoEl.textContent = '';
-        }
+        lockUntil = Number(locks[host]) || 0;
+        updateLockInfo();
     });
 }
 
-updateLockInfo();
+refreshLockUntilFromStorage();
 setInterval(updateLockInfo, 1000);
+
+chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local' || !changes.locks || !host) return;
+    const newLocks = (changes.locks.newValue || {});
+    lockUntil = Number(newLocks[host]) || 0;
+    updateLockInfo();
+});
 
 function goBackOrCloseTab() {
     // First attempt browser history navigation.
@@ -82,12 +93,6 @@ const optionsLink = document.getElementById('optionsLink');
 if (optionsLink) {
     optionsLink.addEventListener('click', (e) => {
         e.preventDefault();
-        // Open options directly
-        try {
-            window.location.href = chrome.runtime.getURL('src/options.html');
-        } catch (err) {
-            // fallback for non-extension contexts
-            window.location.href = 'src/options.html';
-        }
+        chrome.runtime.openOptionsPage();
     });
 }

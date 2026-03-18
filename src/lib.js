@@ -27,12 +27,26 @@
         return (Math.abs(hash) % 10000000) + 1;
     }
 
+    // Format seconds to a compact highest-unit label, e.g. 19s, 5m, 2h, 1d.
+    function formatCompactDuration(totalSeconds) {
+        const s = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+        if (s <= 0) return '0s';
+        const day = 86400;
+        const hour = 3600;
+        const minute = 60;
+        if (s >= day) return `${Math.floor(s / day)}d`;
+        if (s >= hour) return `${Math.floor(s / hour)}h`;
+        if (s >= minute) return `${Math.floor(s / minute)}m`;
+        return `${s}s`;
+    }
+
     // Export for CommonJS (tests) and attach to global for browser scripts
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = { normalizeHost, stableId };
+        module.exports = { normalizeHost, stableId, formatCompactDuration };
     }
     if (typeof self !== 'undefined') {
         self.normalizeHost = normalizeHost;
         self.stableId = stableId;
+        self.formatCompactDuration = formatCompactDuration;
     }
 })(this);

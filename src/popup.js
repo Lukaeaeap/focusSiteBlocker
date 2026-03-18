@@ -64,10 +64,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             if (isLocked) {
                 const remain = Math.max(0, Math.ceil((until - now) / 1000));
-                const m = Math.floor(remain / 60);
-                const s = remain % 60;
-                statusEl.textContent = `Locked — ${m}m ${s}s remaining`;
-                lockBtn.textContent = `Locked (${m}m${s}s)`;
+                const compact = formatCompactDuration(remain);
+                statusEl.textContent = `Locked - ${compact} remaining`;
+                lockBtn.textContent = `Locked (${compact})`;
             } else if (isBlocked) {
                 statusEl.textContent = 'This site is in your blocklist';
                 lockBtn.textContent = 'Lock 5m';
