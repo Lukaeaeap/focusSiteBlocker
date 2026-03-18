@@ -1,20 +1,4 @@
-function normalizeHost(input) {
-    try {
-        if (!input) return '';
-        input = input.trim().toLowerCase();
-        // if user pasted a full URL, extract hostname
-        if (input.includes('://')) {
-            const url = new URL(input);
-            return url.hostname.replace(/^www\./, '');
-        }
-        // remove path if present
-        input = input.split('/')[0];
-        input = input.replace(/^www\./, '');
-        return input;
-    } catch (e) {
-        return '';
-    }
-}
+// `normalizeHost` is provided by `lib.js` (included before this script)
 
 function render(list) {
     const ul = document.getElementById('list');
@@ -115,6 +99,9 @@ document.addEventListener('DOMContentLoaded', () => {
     loadAndRender();
     const addBtn = document.getElementById('addBtn');
     const input = document.getElementById('domainInput');
+    const exportBtn = document.getElementById('exportBtn');
+    const importBtn = document.getElementById('importBtn');
+    const importFile = document.getElementById('importFile');
     addBtn.addEventListener('click', () => {
         const host = normalizeHost(input.value);
         if (!host) return alert('Please enter a valid domain or URL');
@@ -129,6 +116,58 @@ document.addEventListener('DOMContentLoaded', () => {
                 alert('Domain already in list');
             }
         });
+    });
+
+    // Export current blocked list and locks as JSON
+    exportBtn.addEventListener('click', () => {
+        chrome.storage.local.get({ blocked: [], locks: {} }, (res) => {
+            const payload = { blocked: res.blocked || [], locks: res.locks || {} };
+            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            const ts = new Date().toISOString().replace(/[:.]/g, '-');
+            a.href = url;
+            a.download = `siteblocker-export-${ts}.json`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+        });
+    });
+
+    // Import JSON file — either replace or merge
+    importBtn.addEventListener('click', () => importFile.click());
+    importFile.addEventListener('change', (ev) => {
+        const f = ev.target.files && ev.target.files[0];
+        if (!f) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+            try {
+                const json = JSON.parse(reader.result);
+                const fileBlocked = Array.isArray(json.blocked) ? json.blocked.map(b => (b || '').toString()) : [];
+                const fileLocks = (json.locks && typeof json.locks === 'object') ? json.locks : {};
+                const replace = confirm('Replace existing blocked list with imported list? OK = replace, Cancel = merge');
+                chrome.storage.local.get({ blocked: [], locks: {} }, (cur) => {
+                    let newBlocked = [];
+                    if (replace) {
+                        newBlocked = Array.from(new Set(fileBlocked.map(normalizeHost).filter(Boolean)));
+                    } else {
+                        const merged = new Set((cur.blocked || []).concat(fileBlocked).map(normalizeHost).filter(Boolean));
+                        newBlocked = Array.from(merged);
+                    }
+                    const newLocks = Object.assign({}, cur.locks || {}, fileLocks || {});
+                    chrome.storage.local.set({ blocked: newBlocked, locks: newLocks }, () => {
+                        loadAndRender();
+                        alert('Import successful');
+                    });
+                });
+            } catch (e) {
+                alert('Failed to parse JSON file');
+            }
+        };
+        reader.readAsText(f);
+        // clear input so same file can be re-imported if needed
+        importFile.value = '';
     });
     // re-render when storage changes (blocked list or locks)
     chrome.storage.onChanged.addListener((changes, area) => {

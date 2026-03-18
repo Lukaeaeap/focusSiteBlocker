@@ -1,19 +1,6 @@
 // Pure helper functions for unit testing
-
-function normalizeHost(input) {
-    try {
-        if (!input) return '';
-        input = input.trim().toLowerCase();
-        if (input.includes('://')) {
-            const url = new URL(input);
-            return url.hostname.replace(/^www\./, '');
-        }
-        input = input.split('/')[0];
-        return input.replace(/^www\./, '');
-    } catch (e) {
-        return '';
-    }
-}
+// Reuse normalizeHost from src/lib.js to keep behavior consistent
+const { normalizeHost } = require('./lib');
 
 function cleanExpiredLocks(locks, now = Date.now()) {
     const out = {};
@@ -34,10 +21,12 @@ function getActiveHosts(blockedHosts = [], locks = {}, now = Date.now()) {
 
 function makeRule(id, host) {
     const safeHost = (host || '').replace(/^\.+|\.+$/g, '');
+    const redirectBase = '/src/blocked.html';
+    const redirectUrl = `${redirectBase}?url=${encodeURIComponent('https://' + safeHost)}`;
     return {
         id,
         priority: 1,
-        action: { type: 'redirect', redirect: { extensionPath: '/src/blocked.html' } },
+        action: { type: 'redirect', redirect: { url: redirectUrl } },
         condition: {
             urlFilter: `||${safeHost}^`,
             resourceTypes: ['main_frame']
