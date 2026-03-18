@@ -2,7 +2,7 @@
     "manifest_version": 3,
     "name": "SiteBlocker (Brave)",
     "version": "0.1.0",
-    "description": "Blocks configured websites and redirects to a focus page.",
+    "description": "Stay focused by blocking distracting websites with optional timed locks.",
     "permissions": [
         "storage",
         "declarativeNetRequest",
@@ -16,7 +16,7 @@
     },
     "options_page": "src/options.html",
     "action": {
-        "default_title": "SiteBlocker",
+        "default_title": "SiteBlocker - Stay Focused",
         "default_popup": "src/popup.html"
     },
     "icons": {

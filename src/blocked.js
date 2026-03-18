@@ -39,9 +39,32 @@ function updateLockInfo() {
 updateLockInfo();
 setInterval(updateLockInfo, 1000);
 
+function goBackOrCloseTab() {
+    // First attempt browser history navigation.
+    if (window.history.length > 1) {
+        window.history.back();
+        return;
+    }
+
+    // If no history is available, close this tab (extension page context).
+    if (chrome.tabs && chrome.tabs.getCurrent) {
+        chrome.tabs.getCurrent((tab) => {
+            if (tab && tab.id !== undefined) {
+                chrome.tabs.remove(tab.id);
+            } else {
+                window.location.href = 'about:blank';
+            }
+        });
+        return;
+    }
+
+    // Final fallback.
+    window.location.href = 'about:blank';
+}
+
 document.getElementById('home').addEventListener('click', (e) => {
     e.preventDefault();
-    window.location.href = 'about:blank';
+    goBackOrCloseTab();
 });
 
 document.getElementById('optionsLink').addEventListener('click', (e) => {

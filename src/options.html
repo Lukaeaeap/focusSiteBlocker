@@ -5,61 +5,154 @@
     <meta charset="utf-8" />
     <title>SiteBlocker — Options</title>
     <style>
+        :root {
+            --bg: #f4f8f6;
+            --card: #ffffff;
+            --text: #102821;
+            --muted: #5a6b66;
+            --accent: #1d7a5f;
+            --accent-strong: #145843;
+            --danger: #b7462a;
+            --border: #d9e4df;
+        }
+
         body {
-            font-family: Arial, Helvetica, sans-serif;
-            max-width: 800px;
-            margin: 20px
+            margin: 0;
+            font-family: "Segoe UI", "Trebuchet MS", sans-serif;
+            background: radial-gradient(circle at 15% 0%, #e9f6f2, var(--bg) 50%);
+            color: var(--text);
+        }
+
+        .wrap {
+            max-width: 860px;
+            margin: 28px auto;
+            padding: 0 16px;
+        }
+
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            box-shadow: 0 6px 24px rgba(20, 45, 37, 0.08);
+            padding: 18px;
+        }
+
+        h1 {
+            margin: 0 0 10px;
+            color: var(--accent-strong);
         }
 
         input[type=text] {
-            width: 320px;
-            padding: 6px
+            width: 100%;
+            max-width: 420px;
+            padding: 10px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            font-size: 14px;
         }
 
         button {
-            padding: 6px 10px
+            padding: 8px 11px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 600;
+            background: #fff;
+            color: var(--text);
+            cursor: pointer;
+        }
+
+        button:hover {
+            border-color: var(--accent);
+            transform: translateY(-1px);
+        }
+
+        .primary {
+            background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+            color: #fff;
+            border-color: transparent;
         }
 
         ul {
-            padding-left: 20px
+            list-style: none;
+            padding-left: 0;
+            margin: 12px 0 0;
         }
 
         li {
-            margin: 6px 0
+            margin: 8px 0;
+            padding: 10px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: #fbfdfc;
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 8px;
+            align-items: center;
         }
 
         .host {
-            font-weight: 600
+            font-weight: 700;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .remove {
-            margin-left: 8px;
-            color: #c00
+            color: var(--danger)
         }
 
         .lock {
-            margin-left: 8px;
+            margin-left: 0;
         }
 
         .locked {
             margin-left: 8px;
-            color: #0b63d8;
+            color: var(--accent);
             font-weight: 600
+        }
+
+        .controls {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .intro {
+            color: var(--muted);
+            margin: 0 0 12px;
+        }
+
+        .tip {
+            margin-top: 14px;
+            color: var(--muted);
+            font-size: 0.95em;
+        }
+
+        @media (max-width: 700px) {
+            li {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
 
 <body>
-    <h1>SiteBlocker — Options</h1>
-    <p>Add domains to block (example: <em>youtube.com</em>, <em>reddit.com</em>).</p>
-    <input id="domainInput" type="text" placeholder="example.com" />
-    <button id="addBtn">Add</button>
+    <main class="wrap">
+        <section class="card">
+            <h1>SiteBlocker Settings</h1>
+            <p class="intro">Add domains to block (for example <em>youtube.com</em> or <em>reddit.com</em>).</p>
 
-    <h2>Blocked sites</h2>
-    <ul id="list"></ul>
+            <div class="controls">
+                <input id="domainInput" type="text" placeholder="example.com" />
+                <button id="addBtn" class="primary">Add Site</button>
+            </div>
 
-    <p style="margin-top:18px;color:#666;font-size:0.95em">Tip: use the "Lock" button to hard-lock a site for a number
-        of minutes (default 5).</p>
+            <h2>Blocked Sites</h2>
+            <ul id="list"></ul>
+
+            <p class="tip">Tip: use "Lock" to hard-lock a site for a number of minutes.</p>
+        </section>
+    </main>
 
     <script src="options.js"></script>
 </body>

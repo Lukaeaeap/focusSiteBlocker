@@ -5,34 +5,124 @@
     <meta charset="utf-8" />
     <title>SiteBlocker</title>
     <style>
+        :root {
+            --bg: #f4f8f6;
+            --card: #ffffff;
+            --text: #0f2720;
+            --muted: #5a6b66;
+            --accent: #1d7a5f;
+            --accent-strong: #145843;
+            --danger: #b7462a;
+            --border: #d9e4df;
+        }
+
         body {
-            font-family: Arial, Helvetica, sans-serif;
-            min-width: 220px;
-            padding: 12px
+            margin: 0;
+            font-family: "Segoe UI", "Trebuchet MS", sans-serif;
+            min-width: 320px;
+            background: radial-gradient(circle at 15% 0%, #e9f6f2, var(--bg) 50%);
+            color: var(--text);
+            padding: 12px;
         }
 
         button {
             padding: 8px 10px;
-            margin-top: 8px;
-            width: 100%
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 600;
+            background: #fff;
+            color: var(--text);
+            cursor: pointer;
+        }
+
+        button:hover {
+            border-color: var(--accent);
+            transform: translateY(-1px);
+        }
+
+        .primary {
+            background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+            color: #fff;
+            border-color: transparent;
+        }
+
+        .danger {
+            color: var(--danger);
+        }
+
+        .panel {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 12px;
+            box-shadow: 0 6px 24px rgba(20, 45, 37, 0.08);
         }
 
         .host {
             font-weight: 600;
-            margin-bottom: 8px
+            margin-top: 4px;
+            font-size: 16px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .label {
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-size: 10px;
+            color: var(--muted);
+            font-weight: 700;
+        }
+
+        .title {
+            margin: 0 0 8px;
+            font-size: 14px;
+            color: var(--accent-strong);
+        }
+
+        .grid {
+            margin-top: 10px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .row {
+            margin-top: 8px;
+            display: grid;
+            gap: 8px;
+        }
+
+        .msg {
+            min-height: 18px;
+            margin-top: 10px;
+            font-size: 12px;
+            color: var(--accent-strong);
+            font-weight: 600;
         }
     </style>
 </head>
 
 <body>
-    <div>
+    <div class="panel">
+        <h1 class="title">SiteBlocker</h1>
+        <div class="label">Current Site</div>
         <div id="host" class="host">Detecting...</div>
-        <button id="blockBtn">Block this site</button>
-        <button id="unblockBtn">Unblock this site</button>
-        <button id="lockBtn">Lock 5 minutes</button>
-        <button id="unlockBtn">Stop lock</button>
-        <button id="optionsBtn">Open Options</button>
-        <div id="msg" style="margin-top:8px;color:green"></div>
+
+        <div class="grid">
+            <button id="blockBtn" class="primary">Block</button>
+            <button id="unblockBtn" class="danger">Unblock</button>
+            <button id="lockBtn">Lock 5m</button>
+            <button id="unlockBtn">Stop Lock</button>
+        </div>
+
+        <div class="row">
+            <button id="optionsBtn">Open Settings</button>
+        </div>
+
+        <div id="msg" class="msg"></div>
     </div>
     <script src="popup.js"></script>
 </body>

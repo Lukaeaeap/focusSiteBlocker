@@ -23,9 +23,11 @@ function render(list) {
         const locks = r.locks || {};
         list.forEach((host, idx) => {
             const li = document.createElement('li');
+            const left = document.createElement('div');
             const span = document.createElement('span');
             span.className = 'host';
             span.textContent = host;
+            left.appendChild(span);
 
             const lockInfo = document.createElement('span');
             const now = Date.now();
@@ -34,7 +36,11 @@ function render(list) {
                 lockInfo.className = 'locked';
                 const remaining = Math.ceil((until - now) / 1000);
                 lockInfo.textContent = `Locked (${remaining}s)`;
+                left.appendChild(lockInfo);
             }
+
+            const actions = document.createElement('div');
+            actions.className = 'controls';
 
             const lockBtn = document.createElement('button');
             lockBtn.className = 'lock';
@@ -77,11 +83,12 @@ function render(list) {
                 render(list);
             });
 
-            li.appendChild(span);
-            if (lockInfo.textContent) li.appendChild(lockInfo);
-            li.appendChild(lockBtn);
-            li.appendChild(unlockBtn);
-            li.appendChild(btn);
+            actions.appendChild(lockBtn);
+            actions.appendChild(unlockBtn);
+            actions.appendChild(btn);
+
+            li.appendChild(left);
+            li.appendChild(actions);
             ul.appendChild(li);
         });
     });
